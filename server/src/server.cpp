@@ -13,18 +13,18 @@ int main(int argc, char* argv[]){
 
     //Array of loaded images (chopped up)
     //Pop chunk off as it's sent
-    vector<Image> chunks;
+    std::vector<Image> chunks;
 
     //TODO: Split up into chunks and push onto vector
 
     //Array of booleans for assigned chunks
-    vector<bool> assigned;
+    std::vector<bool> assigned;
 
     //Array of availability of workers
-    vector<bool> workerAvailability;
+    std::vector<bool> workerAvailability;
 
     //Array of image results for chunks;
-    vector<Image> results;
+    std::vector<Image> results;
     
     //Use threads to open connections and send stuff to workers + recieve results
     //Handle specific function reqs like padding for blur and sum for threshold
