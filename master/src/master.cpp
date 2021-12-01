@@ -21,7 +21,8 @@ int main(int argc, char* argv[]){
     //Constants go here up top
     int n = 1;
     const int workers = 4; //Assuming 4 workers for now
-    const int hotdogSections = std::stoi(argv[4]);
+    // const int hotdogSections = std::stoi(argv[4]);
+    const int hotdogSections = 4;
 
     //Array of loaded images (chopped up)
     //Pop chunk off as it's sent
@@ -31,27 +32,20 @@ int main(int argc, char* argv[]){
     int w;
     int h;
     unsigned char * data = stbi_load(argv[1], &w, &h, &n, 1);
+    n = 1;  // so that stbi_write_png works for greyscale
 
-    std::cout << hotdogSections << std::endl;
-
+    int chunk_height = h / hotdogSections;
     for(int chunk = 0; chunk < hotdogSections; chunk++){
 
-        //std::cout << (w * h) / hotdogSections << std::endl;
+        unsigned char *hotdogData = new unsigned char[w * chunk_height];
 
-        unsigned char * hotdogData = new unsigned char[(w * h) / hotdogSections];
+        for(int x = 0; x < w; x++){     // looping through each column
 
-        for(int i = chunk * (w / hotdogSections); i < (chunk + 1) * (w / hotdogSections); i++){
-
-            for(int x = 0; x < w / hotdogSections; x++){
-
-                for(int y = 0; y < h; y++){
-
-                    hotdogData[y * (w / hotdogSections) + x] = data[y * w + i];
-
-                }
+            for(int y = 0; y < chunk_height; y++){      // looping through each row of a chunk 
+                
+                hotdogData[y * w + x] = data[(y+chunk * chunk_height) * w + x];
 
             }
-
         }
 
         chunks.push_back(hotdogData);
@@ -59,7 +53,7 @@ int main(int argc, char* argv[]){
     }
 
     //Testing of writing of chunk
-    stbi_write_png("../data/chunk1.png", w / hotdogSections, h, n, chunks.at(0), (w / hotdogSections) * n);
+    stbi_write_png("../data/chunk1.png", w , chunk_height, n, chunks.at(1), w * n);
 
     //Array of booleans for assigned chunks
     std::vector<bool> assigned;
