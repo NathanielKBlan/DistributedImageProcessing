@@ -1,1 +1,0 @@
-/usr/bin/c++  -Wall -O2 -Wextra -Wno-missing-field-initializers  -rdynamic CMakeFiles/master.dir/src/master.cpp.o  -o master -lgomp -lpthread 
