@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/trnqungnh/fandm/cps376/final-project/DistributedImageProcessing/worker/build/include/kissnet",
+  "command": "/usr/bin/c++   -I/home/trnqungnh/fandm/cps376/final-project/DistributedImageProcessing/worker/include/kissnet  -Wall -O2 -Wextra -Wno-missing-field-initializers   -std=gnu++17 -o CMakeFiles/minimal.dir/kissnet.cpp.o -c /home/trnqungnh/fandm/cps376/final-project/DistributedImageProcessing/worker/include/kissnet/kissnet.cpp",
+  "file": "/home/trnqungnh/fandm/cps376/final-project/DistributedImageProcessing/worker/include/kissnet/kissnet.cpp"
+}
+]

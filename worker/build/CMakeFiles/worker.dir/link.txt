@@ -1,0 +1,1 @@
+/usr/bin/c++  -Wall -O2 -Wextra -Wno-missing-field-initializers  -rdynamic CMakeFiles/worker.dir/src/worker.cpp.o  -o worker  -lgomp -lpthread -pthread 

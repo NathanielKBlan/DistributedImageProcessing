@@ -1,10 +1,36 @@
 #include <iostream>
 #include <omp.h>
 #include <chrono>
+#include <thread>
 
 #include "image.h"
+#include "kissnet/kissnet.hpp"
+namespace kn = kissnet;
 
-int main()
+int main() {
+  kn::socket<kn::protocol::tcp> server(kn::endpoint("127.0.0.1:3000"));
+  server.bind();
+  server.listen();
+
+  while (true) {
+    auto client = server.accept();
+    printf("socket accept\n");
+
+    kn::buffer<1024> buff;
+    const auto [size, status] = client.recv(buff);
+
+
+    std::cout << "size: " << size << std::endl;
+    std::cout << "status: " << status << std::endl;
+    auto buff_data = reinterpret_cast<const int *>(buff.data());
+    std::cout << "received: " << *buff_data << std::endl;
+
+    std::string response = "Success";
+    client.send(reinterpret_cast<const std::byte *>(response.c_str()), response.size());
+  }
+
+  return 0;
+}
 
 Image upsample(Image img, int scale, int threads){
   

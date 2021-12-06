@@ -1,0 +1,1 @@
+/usr/bin/c++  -Wall -O2 -Wextra -Wno-missing-field-initializers   CMakeFiles/minimal.dir/kissnet.cpp.o  -o minimal 
