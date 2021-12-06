@@ -79,8 +79,9 @@ int main(int argc, char* argv[]){
     // here)
     std::cout << reinterpret_cast<const char *>(static_buffer.data()) << '\n';
 
+    usleep(1000000);
     // send the height of the chunk
-    printf("send width %d\n", chunk_height);
+    printf("send chunk_height %d\n", chunk_height);
     a_socket.send(reinterpret_cast<const std::byte *>(&chunk_height), sizeof(int));
 
     const auto [data_size_1, status_code_1] = a_socket.recv(static_buffer);
@@ -95,8 +96,8 @@ int main(int argc, char* argv[]){
     std::cout << reinterpret_cast<const char *>(static_buffer.data()) << '\n';
 
     // send the data of the chunk 
-    // std::cout << "send data\n";
-    // a_socket.send(reinterpret_cast<const std::byte *>(chunks.at(0)), w * chunk_height);
+    std::cout << "send data\n";
+    a_socket.send(reinterpret_cast<const std::byte *>(&chunks.at(0)), w * chunk_height);
 
     // for (int i = 0; i < chunks.size(); i++) {
     //     // TODO: send out chunks to socket

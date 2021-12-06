@@ -2,31 +2,68 @@
 #include <omp.h>
 #include <chrono>
 #include <thread>
+#include <vector>
 
 #include "image.h"
 #include "kissnet/kissnet.hpp"
 namespace kn = kissnet;
 
 int main() {
+
+  int width = 0;
+  int height = 0;
+  unsigned char * imageChunk;
+  std::vector<unsigned char *> imageData;
+
   kn::socket<kn::protocol::tcp> server(kn::endpoint("127.0.0.1:3000"));
   server.bind();
   server.listen();
 
+  auto client = server.accept();
+  printf("socket accept\n");
+
+  int pixellocation = 0;
+  int multiplier = 0;
+
   while (true) {
-    auto client = server.accept();
-    printf("socket accept\n");
 
-    kn::buffer<1024> buff;
-    const auto [size, status] = client.recv(buff);
+    if(width == 0 || height == 0){
+      kn::buffer<1024> buff;
+      const auto [size, status] = client.recv(buff);
 
+      std::cout << "size: " << size << std::endl;
+      std::cout << "status: " << status << std::endl;
 
-    std::cout << "size: " << size << std::endl;
-    std::cout << "status: " << status << std::endl;
-    auto buff_data = reinterpret_cast<const int *>(buff.data());
-    std::cout << "received: " << *buff_data << std::endl;
+      int * buff_data;
 
-    std::string response = "Success";
-    client.send(reinterpret_cast<const std::byte *>(response.c_str()), response.size());
+      if(width == 0){
+        buff_data = reinterpret_cast<int *>(buff.data());
+        width = *buff_data;
+      }else if(height == 0){
+        buff_data = reinterpret_cast<int *>(buff.data());
+        height = *buff_data;
+        imageChunk = new unsigned char[width * height];
+      }
+      
+      std::cout << "received: " << *buff_data << std::endl;
+
+      std::string response = "Success";
+      client.send(reinterpret_cast<const std::byte *>(response.c_str()), response.size());  
+    }else{
+
+      kn::buffer<2048> buff;
+      const auto [size, status] = client.recv(buff);
+
+      
+      auto buff_data = reinterpret_cast<unsigned char *>(buff.data());
+
+      if(size > 0){
+        imageData.push_back(buff_data);
+        std::cout << "vector size: " << imageData.size() << std::endl;
+      }
+    }
+    
+    
   }
 
   return 0;
