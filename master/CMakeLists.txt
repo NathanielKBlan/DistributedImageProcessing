@@ -15,6 +15,4 @@ include_directories(include)
 add_executable(master src/master.cpp ${SOURCE_FILES})
 target_include_directories(master PRIVATE include)
 target_link_libraries(master PUBLIC OpenMP::OpenMP_CXX)
-# target_link_libraries(kissnet)
-
 target_link_libraries(master PUBLIC kissnet)
