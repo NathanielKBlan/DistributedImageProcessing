@@ -14,7 +14,6 @@ int main() {
   int height = 0;
   int n = 1;
   unsigned char * imageChunk;
-  std::vector<unsigned char *> imageData;
 
   kn::socket<kn::protocol::tcp> server(kn::endpoint("127.0.0.1:3000"));
   server.bind();
@@ -59,22 +58,25 @@ int main() {
       auto buff_data = reinterpret_cast<unsigned char *>(buff.data());
 
       if(size > 0){
-        //imageData.push_back(buff_data);
-        for(int i = 0; i < 2048; i++){
+        
+        for(int i = 0; i < size; i++){
           imageChunk[i + lastIndex] = buff_data[i];
-          std::cout << i + lastIndex << std::endl;
+          //std::cout << i + lastIndex << std::endl;
         }
-        lastIndex += 2048;
+        lastIndex += size;
+        //std::cout << lastIndex << std::endl;
         detectedImage = true;
       }else if(size == 0 && detectedImage){
         break;
       }
+
     }
     
     
   }
 
-  stbi_write_png("../data/chunk1-1-2.png", width , height, n, imageChunk, width * n);
+  std::cout << width * height << std::endl;
+  stbi_write_png("../data/chunk1-1-2.png", width, height, n, imageChunk, width * n);
 
   return 0;
 }
