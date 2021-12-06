@@ -12,6 +12,7 @@ int main() {
 
   int width = 0;
   int height = 0;
+  int n = 1;
   unsigned char * imageChunk;
   std::vector<unsigned char *> imageData;
 
@@ -22,8 +23,8 @@ int main() {
   auto client = server.accept();
   printf("socket accept\n");
 
-  int pixellocation = 0;
-  int multiplier = 0;
+  bool detectedImage = false;
+  int lastIndex = 0;
 
   while (true) {
 
@@ -58,13 +59,22 @@ int main() {
       auto buff_data = reinterpret_cast<unsigned char *>(buff.data());
 
       if(size > 0){
-        imageData.push_back(buff_data);
-        std::cout << "vector size: " << imageData.size() << std::endl;
+        //imageData.push_back(buff_data);
+        for(int i = 0; i < 2048; i++){
+          imageChunk[i + lastIndex] = buff_data[i];
+          std::cout << i + lastIndex << std::endl;
+        }
+        lastIndex += 2048;
+        detectedImage = true;
+      }else if(size == 0 && detectedImage){
+        break;
       }
     }
     
     
   }
+
+  stbi_write_png("../data/chunk1-1-2.png", width , height, n, imageChunk, width * n);
 
   return 0;
 }

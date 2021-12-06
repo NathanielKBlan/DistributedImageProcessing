@@ -31,8 +31,7 @@ int main(int argc, char* argv[]){
     //Constants go here up top
     int n = 1;
     const int workers = 4; //Assuming 4 workers for now
-    // const int hotdogSections = std::stoi(argv[4]);
-    const int hotdogSections = 3;
+    const int hotdogSections = std::stoi(argv[4]);
 
     //Array of loaded images (chopped up)
     //Pop chunk off as it's sent
