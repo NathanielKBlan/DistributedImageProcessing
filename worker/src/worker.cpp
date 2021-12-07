@@ -8,10 +8,15 @@
 #include "kissnet/kissnet.hpp"
 namespace kn = kissnet;
 
+unsigned char * upsample(unsigned char * img, int w, int h, int scale, int threads);
+unsigned char * blur(unsigned char * img, int w, int h, int blur_size, int threads);
+unsigned char * threshold(unsigned char * img, int w, int h, int threads);
+
 int main() {
 
   int width = 0;
   int height = 0;
+  int op = 3;
   int n = 1;
   unsigned char * imageChunk;
 
@@ -27,28 +32,30 @@ int main() {
 
   while (true) {
 
-    if(width == 0 || height == 0){
+    if(width == 0 || height == 0 || op == 0){
       kn::buffer<1024> buff;
       const auto [size, status] = client.recv(buff);
 
-      std::cout << "size: " << size << std::endl;
-      std::cout << "status: " << status << std::endl;
+      std::cout << "size received: " << size << std::endl;
 
       int * buff_data;
 
       if(width == 0){
         buff_data = reinterpret_cast<int *>(buff.data());
         width = *buff_data;
+        std::cout << width << std::endl; 
       }else if(height == 0){
         buff_data = reinterpret_cast<int *>(buff.data());
         height = *buff_data;
         imageChunk = new unsigned char[width * height];
-      }
-      
-      std::cout << "received: " << *buff_data << std::endl;
+        std::cout << height << std::endl;
+      }/*else if(op == 0 && width != 0 && height != 0){
+        buff_data = reinterpret_cast<int *>(buff.data());
+        op = *buff_data;
+        std::cout << *buff_data << std::endl;
+        //std::cout << op << std::endl;
+      }*/
 
-      std::string response = "Success";
-      client.send(reinterpret_cast<const std::byte *>(response.c_str()), response.size());  
     }else{
 
       kn::buffer<2048> buff;
@@ -71,32 +78,46 @@ int main() {
       }
 
     }
-    
-    
   }
 
   std::cout << width * height << std::endl;
   stbi_write_png("../data/chunk1-1-2.png", width, height, n, imageChunk, width * n);
 
+  if(op == 1){
+    unsigned char * out_img = upsample(imageChunk, width, height, 4, 8);
+    stbi_write_png("../data/chunk0-upscaled.png", width * 4, height * 4, n, out_img, (width * 4) * n);
+  }else if(op == 2){
+    unsigned char * out_img = blur(imageChunk, width, height, 20, 8);
+    stbi_write_png("../data/chunk0-blured.png", width, height, n, out_img, width * n);
+  }else if(op == 3){
+    unsigned char * out_img = threshold(imageChunk, width, height, 8);
+    stbi_write_png("../data/chunk0-thresh.png", width, height, n, out_img, width * n);
+  }
+
   return 0;
 }
 
-Image upsample(Image img, int scale, int threads){
+unsigned char * upsample(unsigned char * img, int w, int h, int scale, int threads){
+
+  std::cout << "Upsampling" << std::endl;
   
-  Image out_img(img.w * scale, img.h * scale);
+  unsigned char * out_img = new unsigned char[w * h * scale * scale];
 
   omp_set_num_threads(threads);
 
   #pragma omp parallel for
-  for(int x = 0; x < img.w; x++){ //This set of nested loops is used to iterate over each pixel and fetch its value
-    for(int y = 0; y < img.h; y++){
+  for(int x = 0; x < w; x++){ //This set of nested loops is used to iterate over each pixel and fetch its value
+    for(int y = 0; y < h; y++){
 
-      int pixelValue = img.get(x, y);
+      int pixelValue = img[y * w + x];
 
       //This set of nested loops takes care of filling up the scaled region w/ the same pixel value
       for(int a = 0; a < scale; a++){
         for(int b = 0; b < scale; b++){
-          out_img.set((x * scale) + a, (y * scale) + b, pixelValue);
+          //x = (x * scale) + a
+          //y = (y * scale) + b
+          //std::cout << x << " " << y << std::endl;
+          out_img[((y * scale) + b) * (w * scale) + ((x * scale) + a)] = pixelValue;
         }
       }
 
@@ -106,29 +127,29 @@ Image upsample(Image img, int scale, int threads){
   return out_img;
 }
 
-Image blur(Image img, int padding_amount, int blur_size, int threads){
+unsigned char * blur(unsigned char * img, int w, int h, int blur_size, int threads){
 
   omp_set_num_threads(threads);
-  
-  int width = img.w - padding_amount;
 
-  Image out_img(width, img.h);
+  unsigned char * out_img = new unsigned char[w * h];
 
   #pragma omp parallel for
-  for(int x = 0; x < width; x++){
-    for(int y = 0; y < img.h; y++){
+  for(int x = 0; x < w; x++){
+    for(int y = 0; y < h; y++){
 
       if(blur_size >= 1){
 
         int values[blur_size][blur_size];
-        values[(blur_size / 2) + 1][(blur_size / 2) + 1] = img.get(x, y);
+        values[(blur_size / 2) + 1][(blur_size / 2) + 1] = img[y * w + x];
 
         for(int a = 0; a < blur_size; a++){
 
           for(int b = 0; b < blur_size; b++){
 
-            if(x - (blur_size / 2) + a >= 0 && x - (blur_size / 2) + a < img.w && y - (blur_size / 2) + b >= 0 && y - (blur_size / 2) + b < img.h){
-              values[a][b] = img.get(x - (blur_size / 2) + a, y - (blur_size / 2) + b);
+            if(x - (blur_size / 2) + a >= 0 && x - (blur_size / 2) + a < w && y - (blur_size / 2) + b >= 0 && y - (blur_size / 2) + b < h){
+              //x = x - (blur_size / 2) + a
+              //y = y - (blur_size / 2) + b
+              values[a][b] = img[(y - (blur_size / 2) + b) * w + (x - (blur_size / 2) + a)];
             }else{
               values[a][b] = 0; 
             } 
@@ -151,9 +172,9 @@ Image blur(Image img, int padding_amount, int blur_size, int threads){
 
         int average = sum / termNums;
 
-        out_img.set(x, y, average);
+        out_img[y * w + x] = average;
       }else{
-        out_img.set(x, y, img.get(x, y));
+        out_img[y * w + x] = img[y * w + x];
       }
       
     }
@@ -162,20 +183,20 @@ Image blur(Image img, int padding_amount, int blur_size, int threads){
   return out_img;
 }
 
-Image threshold(Image img, int threads){
+unsigned char * threshold(unsigned char * img, int w, int h, int threads){
              
-  Image out_img(img.w, img.h); // Creates an output image (img.w x img.h)
+  unsigned char * out_img = new unsigned char[w * h]; // Creates an output image (img.w x img.h)
 
   // TODO: find the threshold (average of the image using OpenMP)
-  double outerConstant = 1.0 / (img.w * img.h);
+  double outerConstant = 1.0 / (w * h);
   int sum = 0;
 
   omp_set_num_threads(threads);
 
   #pragma omp parallel for reduction(+:sum)
-  for(int x = 0; x < img.w; x++){
-      for(int y = 0; y < img.h; y++){
-        sum += img.get(x,y);
+  for(int x = 0; x < w; x++){
+      for(int y = 0; y < h; y++){
+        sum += img[y * w + x];
       }
   }
 
@@ -186,14 +207,14 @@ Image threshold(Image img, int threads){
 
   // TODO: threshold the image (using OpenMP)
   #pragma omp parallel for
-  for(int x = 0; x < img.w; x++){
-    for(int y = 0; y < img.h; y++){
-      int currentValue = img.get(x, y);
+  for(int x = 0; x < w; x++){
+    for(int y = 0; y < h; y++){
+      int currentValue = img[y * w + x];
 
       if(currentValue < threshold){
-        out_img.set(x, y, 0);
+        out_img[y * w + x] = 0;
       }else{
-        out_img.set(x, y, 255);
+        out_img[y * w + x] = 255;
       }
     }
   }

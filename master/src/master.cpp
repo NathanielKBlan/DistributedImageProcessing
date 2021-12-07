@@ -40,6 +40,7 @@ int main(int argc, char* argv[]){
     //TODO: Split up into chunks and push onto vector
     int w;
     int h;
+    int op = 1;
     unsigned char * data = stbi_load(argv[1], &w, &h, &n, 1);
     n = 1;  // so that stbi_write_png works for greyscale
 
@@ -67,31 +68,13 @@ int main(int argc, char* argv[]){
     printf("send width %d\n", w);
     a_socket.send(reinterpret_cast<const std::byte *>(&w), sizeof(int));
 
-    const auto [data_size, status_code] = a_socket.recv(static_buffer);
-
-    // To print it as a good old C string, add a null terminator
-    if (data_size < static_buffer.size()) {
-        static_buffer[data_size] = std::byte{'\0'};
-    }
-
-    // Print the raw data as text into the terminal (should display html/css code
-    // here)
-    std::cout << reinterpret_cast<const char *>(static_buffer.data()) << '\n';
-
     // send the height of the chunk
     printf("send chunk_height %d\n", chunk_height);
     a_socket.send(reinterpret_cast<const std::byte *>(&chunk_height), sizeof(int));
 
-    const auto [data_size_1, status_code_1] = a_socket.recv(static_buffer);
-
-    // To print it as a good old C string, add a null terminator
-    if (data_size_1 < static_buffer.size()) {
-        static_buffer[data_size_1] = std::byte{'\0'};
-    }
-
-    // Print the raw data as text into the terminal (should display html/css code
-    // here)
-    std::cout << reinterpret_cast<const char *>(static_buffer.data()) << '\n';
+    // Send request
+    printf("send op code %d\n", op);
+    //a_socket.send(reinterpret_cast<const std::byte *>(&op), sizeof(int));
 
     // send the data of the chunk 
     std::cout << "send data\n";
@@ -102,7 +85,7 @@ int main(int argc, char* argv[]){
     // }
 
     //Testing of writing of chunk
-    stbi_write_png("../data/chunk1.png", w , chunk_height, n, chunks.at(0), w * n);
+    stbi_write_png("../data/chunk0.png", w , chunk_height, n, chunks.at(0), w * n);
 
     //Array of booleans for assigned chunks
     std::vector<bool> assigned;
