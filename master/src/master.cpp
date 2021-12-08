@@ -40,7 +40,7 @@ int main(int argc, char* argv[]){
     //TODO: Split up into chunks and push onto vector
     int w;
     int h;
-    int op = 1;
+    int op = 100;
     unsigned char * data = stbi_load(argv[1], &w, &h, &n, 1);
     n = 1;  // so that stbi_write_png works for greyscale
 
@@ -64,17 +64,12 @@ int main(int argc, char* argv[]){
 
     kn::buffer<4096> static_buffer;
 
+    //combine width, height, and op code in a string
+    std::string img_metadata = std::to_string(w) + "," + std::to_string(chunk_height) + "," + std::to_string(op);
+
     // send the width of the chunk
-    printf("send width %d\n", w);
-    a_socket.send(reinterpret_cast<const std::byte *>(&w), sizeof(int));
-
-    // send the height of the chunk
-    printf("send chunk_height %d\n", chunk_height);
-    a_socket.send(reinterpret_cast<const std::byte *>(&chunk_height), sizeof(int));
-
-    // Send request
-    printf("send op code %d\n", op);
-    //a_socket.send(reinterpret_cast<const std::byte *>(&op), sizeof(int));
+    std::cout << "Sending image metadata: " << img_metadata << std::endl;
+    a_socket.send(reinterpret_cast<const std::byte *>(img_metadata.c_str()), sizeof(unsigned char) * (img_metadata.length() + 1));
 
     // send the data of the chunk 
     std::cout << "send data\n";

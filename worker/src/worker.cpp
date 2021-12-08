@@ -16,7 +16,7 @@ int main() {
 
   int width = 0;
   int height = 0;
-  int op = 3;
+  int op = 0;
   int n = 1;
   unsigned char * imageChunk;
 
@@ -38,23 +38,32 @@ int main() {
 
       std::cout << "size received: " << size << std::endl;
 
-      int * buff_data;
+      if(size != 0){
+        const char * buff_data = reinterpret_cast<const char *>(buff.data());
 
-      if(width == 0){
-        buff_data = reinterpret_cast<int *>(buff.data());
-        width = *buff_data;
-        std::cout << width << std::endl; 
-      }else if(height == 0){
-        buff_data = reinterpret_cast<int *>(buff.data());
-        height = *buff_data;
+        std::string img_metadata(buff_data);
+
+        std::cout << img_metadata << std::endl;
+
+        //split string and assign values
+        std::string delim = ",";
+        std::string widthS = img_metadata.substr(0, img_metadata.find(delim));
+        img_metadata.erase(0, img_metadata.find(delim) + delim.length());
+        std::string heightS = img_metadata.substr(0, img_metadata.find(delim));
+        img_metadata.erase(0, img_metadata.find(delim) + delim.length());
+        std::string opS = img_metadata.substr(0, img_metadata.length());
+
+        //assign values
+        width = std::stoi(widthS);
+        height = std::stoi(heightS);
+        op = std::stoi(opS);
+
+        std::cout << "Here is the height: " << height << std::endl;
+        std::cout << "Here is the width: " << width << std::endl;
+        std::cout << "Here is the op: " << op << std::endl;
+
         imageChunk = new unsigned char[width * height];
-        std::cout << height << std::endl;
-      }/*else if(op == 0 && width != 0 && height != 0){
-        buff_data = reinterpret_cast<int *>(buff.data());
-        op = *buff_data;
-        std::cout << *buff_data << std::endl;
-        //std::cout << op << std::endl;
-      }*/
+      }
 
     }else{
 
