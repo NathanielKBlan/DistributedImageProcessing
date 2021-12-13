@@ -5,7 +5,7 @@ find_package(OpenMP)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "-Wall -O2 -Wextra -Wno-missing-field-initializers")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -Wall -O2 -Wextra -Wno-missing-field-initializers")
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)

@@ -12,15 +12,20 @@ unsigned char * upsample(unsigned char * img, int w, int h, int scale, int threa
 unsigned char * blur(unsigned char * img, int w, int h, int blur_size, int threads);
 unsigned char * threshold(unsigned char * img, int w, int h, int threads);
 
-int main() {
+//Arguments: port
+int main(int argc, char* argv[]) {
 
   int width = 0;
   int height = 0;
   int op = 0;
+  int id = -1;
   int n = 1;
   unsigned char * imageChunk;
 
-  kn::socket<kn::protocol::tcp> server(kn::endpoint("127.0.0.1:3000"));
+  std::string ip{"127.0.0.1:"};
+  std::string end = ip + argv[1];
+
+  kn::socket<kissnet::protocol::tcp> server(kn::endpoint(end.c_str()));
   server.bind();
   server.listen();
 
@@ -30,15 +35,17 @@ int main() {
   bool detectedImage = false;
   int lastIndex = 0;
 
+  size_t total = 0;
+  size_t len = 0;
+
   while (true) {
 
-    if(width == 0 || height == 0 || op == 0){
+    if(width == 0 || height == 0 || op == 0 || id == -1){
       kn::buffer<1024> buff;
       const auto [size, status] = client.recv(buff);
 
-      std::cout << "size received: " << size << std::endl;
-
       if(size != 0){
+        std::cout << "size received: " << size << std::endl;
         const char * buff_data = reinterpret_cast<const char *>(buff.data());
 
         std::string img_metadata(buff_data);
@@ -51,57 +58,110 @@ int main() {
         img_metadata.erase(0, img_metadata.find(delim) + delim.length());
         std::string heightS = img_metadata.substr(0, img_metadata.find(delim));
         img_metadata.erase(0, img_metadata.find(delim) + delim.length());
-        std::string opS = img_metadata.substr(0, img_metadata.length());
+        std::string opS = img_metadata.substr(0, img_metadata.find(delim));
+        img_metadata.erase(0, img_metadata.find(delim) + delim.length());
+        std::string idS = img_metadata.substr(0, img_metadata.length());
 
         //assign values
         width = std::stoi(widthS);
         height = std::stoi(heightS);
         op = std::stoi(opS);
+        id = std::stoi(idS);
 
         std::cout << "Here is the height: " << height << std::endl;
         std::cout << "Here is the width: " << width << std::endl;
         std::cout << "Here is the op: " << op << std::endl;
+        std::cout << "Here is the id: " << id << std::endl;
 
         imageChunk = new unsigned char[width * height];
+        len = width * height * sizeof(unsigned char);
+      } else {
+        // Maybe add a timeout
+        // std::cout << "Waiting for master... " << std::endl;
       }
 
-    }else{
+    }else if(detectedImage){
+        // printf("image detected\n");
+          std::string filepath = "../data/chunk-";
+          filepath += std::to_string(id);
 
-      kn::buffer<2048> buff;
-      const auto [size, status] = client.recv(buff);
+        //Do the work here
+        if(op == 1){
+          filepath += "-upscaled.png";
+          unsigned char * out_img = upsample(imageChunk, width, height, 4, 8);
+          stbi_write_png(filepath.c_str(), width * 4, height * 4, n, out_img, (width * 4) * n);
+        }else if(op == 2){
+          filepath += "-blurred.png";
+          unsigned char * out_img = blur(imageChunk, width, height, 20, 8);
+          stbi_write_png(filepath.c_str(), width, height, n, out_img, width * n);
+        }else if(op == 3){
+          filepath += "-thresh.png";
+          unsigned char * out_img = threshold(imageChunk, width, height, 8);
+          stbi_write_png(filepath.c_str(), width, height, n, out_img, width * n);
+        }
 
-      
+        detectedImage = false;
+
+        //send available message here to master
+        auto done_msg = std::string{"Done"};
+
+        // printf("send back to client\n");
+        client.send(reinterpret_cast<const std::byte *>(done_msg.c_str()), done_msg.size());
+
+        width = 0;
+        height = 0;
+        op = 0;
+        len = 0;
+        total = 0;
+        lastIndex = 0;
+        free(imageChunk);
+
+    }else{  // Receiving image data
+      kn::buffer<4096> buff;
+      // printf("total vs len %u vs %u\n", total, len);
+      // printf("receiving from client\n");
+      const auto [size, status] = client.recv(buff);      
       auto buff_data = reinterpret_cast<unsigned char *>(buff.data());
 
       if(size > 0){
-        
+        // if (size != 4096) {
+        //   printf("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
+        //   std::cout << "status " << status << std::endl;
+        // }
+        // std::cout << "size received: " << size << std::endl;
         for(int i = 0; i < size; i++){
           imageChunk[i + lastIndex] = buff_data[i];
-          //std::cout << i + lastIndex << std::endl;
         }
+
         lastIndex += size;
-        //std::cout << lastIndex << std::endl;
-        detectedImage = true;
-      }else if(size == 0 && detectedImage){
-        break;
+        total += size;
+
+        // printf("total vs len %u vs %u\n", total, len);
+        if (total == len) {
+          detectedImage = true;
+        }
+        buff.empty();
+      } else {  // resend if not enough image data (maybe not neccessary)
+        auto resend_msg = std::string{"resend"};
+
+        // printf("request for image resend\n");
+        client.send(reinterpret_cast<const std::byte *>(resend_msg.c_str()), resend_msg.size());
+
+        width = 0;
+        height = 0;
+        op = 0;
+        len = 0;
+        total = 0;
+        lastIndex = 0;
+        free(imageChunk);
+
+        detectedImage = false;
       }
 
     }
   }
 
-  std::cout << width * height << std::endl;
-  stbi_write_png("../data/chunk1-1-2.png", width, height, n, imageChunk, width * n);
-
-  if(op == 1){
-    unsigned char * out_img = upsample(imageChunk, width, height, 4, 8);
-    stbi_write_png("../data/chunk0-upscaled.png", width * 4, height * 4, n, out_img, (width * 4) * n);
-  }else if(op == 2){
-    unsigned char * out_img = blur(imageChunk, width, height, 20, 8);
-    stbi_write_png("../data/chunk0-blured.png", width, height, n, out_img, width * n);
-  }else if(op == 3){
-    unsigned char * out_img = threshold(imageChunk, width, height, 8);
-    stbi_write_png("../data/chunk0-thresh.png", width, height, n, out_img, width * n);
-  }
+  
 
   return 0;
 }
