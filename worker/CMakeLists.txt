@@ -7,9 +7,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS_DEBUG "-g -Wall -O2 -Wextra -Wno-missing-field-initializers")
 
-set(THREADS_PREFER_PTHREAD_FLAG ON)
-find_package(Threads REQUIRED)
-
 set(SOURCE_FILES )
 
 add_subdirectory(include/kissnet)
@@ -19,4 +16,3 @@ add_executable(worker src/worker.cpp ${SOURCE_FILES})
 target_include_directories(worker PRIVATE include)
 target_link_libraries(worker PUBLIC OpenMP::OpenMP_CXX)
 target_link_libraries(worker PUBLIC kissnet)
-target_link_libraries(worker PRIVATE Threads::Threads)
