@@ -40,15 +40,17 @@ int main(int argc, char* argv[]) {
 
   while (true) {
 
-    if(width == 0 || height == 0 || op == 0 || id == -1){
-      kn::buffer<1024> buff;
+    if(width == 0 && height == 0 && op == 0 && id == -1){
+      kn::buffer<44> buff;
       const auto [size, status] = client.recv(buff);
 
       if(size != 0){
-        std::cout << "size received: " << size << std::endl;
+        std::cout << "metadata received: " << size << std::endl;
         const char * buff_data = reinterpret_cast<const char *>(buff.data());
 
         std::string img_metadata(buff_data);
+
+        std::cout << "metadata string length: " << img_metadata.length() << std::endl;
 
         std::cout << img_metadata << std::endl;
 
@@ -75,13 +77,14 @@ int main(int argc, char* argv[]) {
 
         imageChunk = new unsigned char[width * height];
         len = width * height * sizeof(unsigned char);
+        buff.empty();
       } else {
         // Maybe add a timeout
         // std::cout << "Waiting for master... " << std::endl;
       }
 
     }else if(detectedImage){
-        // printf("image detected\n");
+        printf("image detected\n");
           std::string filepath = "../data/chunk-";
           filepath += std::to_string(id);
 
@@ -104,58 +107,82 @@ int main(int argc, char* argv[]) {
 
         //send available message here to master
         auto done_msg = std::string{"Done"};
+        // done_msg += std::to_string(id);
 
-        // printf("send back to client\n");
+        printf("Finishes. Send 'done' to client\n");
         client.send(reinterpret_cast<const std::byte *>(done_msg.c_str()), done_msg.size());
 
         width = 0;
         height = 0;
         op = 0;
         len = 0;
+        id = -1;
         total = 0;
         lastIndex = 0;
         free(imageChunk);
 
     }else{  // Receiving image data
-      kn::buffer<4096> buff;
+      kn::buffer<2048> buff;
       // printf("total vs len %u vs %u\n", total, len);
       // printf("receiving from client\n");
       const auto [size, status] = client.recv(buff);      
       auto buff_data = reinterpret_cast<unsigned char *>(buff.data());
 
       if(size > 0){
-        // if (size != 4096) {
-        //   printf("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
-        //   std::cout << "status " << status << std::endl;
+        std::cout << "size received: " << size << std::endl;
+        std::cout << "status: " << status << std::endl;
+
+        if (size != 2048) {
+          printf("current size %u, buffer size: 2048\n", size);
+        //   // std::string resend_msg = "resend";
+        //   // resend_msg += std::to_string(id);
+          
+        //   // width = 0;
+        //   // height = 0;
+        //   // op = 0;
+        //   // id = -1;
+        //   // len = 0;
+        //   // total = 0;
+        //   // lastIndex = 0;
+        //   // free(imageChunk);
+
+        //   // detectedImage = false;
+
+        //   // printf("request for image resend\n");
+        //   // client.send(reinterpret_cast<const std::byte *>(resend_msg.c_str()), resend_msg.size());
+
+        }
+        //  else {
+          for(int i = 0; i < size; i++){
+            imageChunk[i + lastIndex] = buff_data[i];
+          }
+
+          lastIndex += size;
+          total += size;
+
+          printf("total vs len %u vs %u\n", total, len);
+          if (total == len) {
+            detectedImage = true;
+          }
         // }
-        // std::cout << "size received: " << size << std::endl;
-        for(int i = 0; i < size; i++){
-          imageChunk[i + lastIndex] = buff_data[i];
-        }
-
-        lastIndex += size;
-        total += size;
-
-        // printf("total vs len %u vs %u\n", total, len);
-        if (total == len) {
-          detectedImage = true;
-        }
-        buff.empty();
+        
       } else {  // resend if not enough image data (maybe not neccessary)
-        auto resend_msg = std::string{"resend"};
+        // std::string resend_msg = "resend-";
+        // resend_msg += std::to_string(id);
 
         // printf("request for image resend\n");
-        client.send(reinterpret_cast<const std::byte *>(resend_msg.c_str()), resend_msg.size());
+        // client.send(reinterpret_cast<const std::byte *>(resend_msg.c_str()), resend_msg.size());
 
-        width = 0;
-        height = 0;
-        op = 0;
-        len = 0;
-        total = 0;
-        lastIndex = 0;
-        free(imageChunk);
+        // width = 0;
+        // height = 0;
+        // op = 0;
+        // id = -1;
+        // len = 0;
+        // total = 0;
+        // lastIndex = 0;
+        // free(imageChunk);
 
-        detectedImage = false;
+        // detectedImage = false;
       }
 
     }

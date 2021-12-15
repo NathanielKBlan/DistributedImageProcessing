@@ -18,8 +18,8 @@
 #include "kissnet/kissnet.hpp"
 namespace kn = kissnet;
 
-void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &assigned) {
-    kn::buffer<1024> buff;
+void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &assigned, unsigned char *chunk, std::vector<unsigned char *> &chunks, bool &finish) {
+    kn::buffer<4> buff;
 
     // printf("waiting for worker %d\n", i);
     auto [size, status] = workers.at(i).recv(buff);
@@ -28,12 +28,39 @@ void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &as
         auto [nsize, nstatus] = workers.at(i).recv(buff);
         size = nsize;
     }
-    std::cout << "size recv: " << size << std::endl;
 
     #pragma omp critical
-    {
-        assigned.at(i) = false;
+        {
+            assigned.at(i) = false;
+        }
+
+    if (size < buff.size()) {
+        buff[size] = std::byte{'\0'};
     }
+
+  // Print the raw data as text into the terminal (should display html/css code
+  // here)
+    char *msg = reinterpret_cast<char *>(buff.data());
+    std::cout << msg << '\n';
+
+
+    // if (strncmp(msg, "Done", 4) == 0) {
+    //     #pragma omp critical
+    //     {
+    //         assigned.at(i) = false;
+    //         // if (chunks.size() == 0) {
+    //         //     finish = true;
+    //         // }
+    //     }
+    // } 
+    // else if (strncmp(msg, "resend", 6) == 0) {
+    //     #pragma omp critical
+    //     {
+    //         assigned.at(i) = false;
+    //         chunks.push_back(chunk);
+    //     }
+    // }
+    
 }
 
 //Arguments order: image file name, image out file name, function name (blur, threshold, or upsample), chunks, threads
@@ -56,7 +83,6 @@ int main(int argc, char* argv[]){
     //Vector of clients
     std::vector<kn::tcp_socket> clients;
 
-    #pragma omp parallel for
     for(int i = 0; i < 4; i++){
         workers.at(i).connect();
     }
@@ -94,10 +120,11 @@ int main(int argc, char* argv[]){
 
     }
 
+    bool finish = false;
     while(chunks.size() != 0){
 
         //Send work to any available worker
-        #pragma omp parallel for
+        #pragma omp parallel for 
         for(int i = 0; i < assigned.size(); i++){
             if(assigned.at(i) == false && chunks.size() != 0){
                 int chunk_id;
@@ -113,19 +140,24 @@ int main(int argc, char* argv[]){
                 }
                 
                 //combine width, height, and op code in a string
-                std::string img_metadata = std::to_string(w) + "," + std::to_string(chunk_height) + "," + std::to_string(op) + "," + std::to_string(chunk_id);
+                std::string img_metadata = std::to_string(w) + "," + std::to_string(chunk_height) + "," + std::to_string(op) + "," + std::to_string(chunk_id) + ",";
+                size_t lenx = 44 - img_metadata.length() - 1;
+                for (int i = 0; i < lenx; i++) {
+                    img_metadata += "x";
+                }
 
-                std::cout << "Sending image metadata: " << img_metadata << std::endl;
+                // std::cout << "Sending image metadata: " << img_metadata << std::endl;
                 workers.at(i).send(reinterpret_cast<const std::byte *>(img_metadata.c_str()), sizeof(unsigned char) * (img_metadata.length() + 1));
 
                 // send the data of the chunk 
-                std::cout << "send data\n";
+                // std::cout << "send data\n";
                 const auto [send_size, send_status] = workers.at(i).send(reinterpret_cast<const std::byte *>(chunk), w * chunk_height * sizeof(unsigned char));
-                            
-                    #pragma omp task
-                        msg_recv(workers, i, assigned);
+                std::cout << "sent: " << send_size << ", " << w*chunk_height <<  std::endl;
+                #pragma omp task
+                    msg_recv(workers, i, assigned, chunk, chunks, finish);
             }
         }
+
     }   
     
     //Use threads to open connections and send stuff to workers + recieve results
