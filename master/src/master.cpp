@@ -18,7 +18,16 @@
 #include "kissnet/kissnet.hpp"
 namespace kn = kissnet;
 
-void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &assigned, unsigned char *chunk, std::vector<unsigned char *> &chunks, bool &finish) {
+#define METADATA_MAX_LENGTH 44
+
+void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &assigned, unsigned char *chunk, std::vector<unsigned char *> &chunks) {
+    bool image_received = false;
+    bool metadata_received = false;
+
+    // for checking if received full image (actual == calculated)
+    size_t actual_size = 0;
+    size_t calculated_size = 0;
+
     kn::buffer<4> buff;
 
     // printf("waiting for worker %d\n", i);
@@ -36,7 +45,14 @@ void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &as
     
 }
 
-//Arguments order: image file name, image out file name, function name (blur, threshold, or upsample), chunks, threads
+void metadata_padding(std::string &metadata) {
+    size_t lenx = METADATA_MAX_LENGTH - metadata.length() - 1;
+    for (int i = 0; i < lenx; i++) {
+        metadata += "x";
+    }
+}
+
+//Arguments order: image file name, image out file name, function name (blur, threshold, or upsample), chunks, threads, blur_size, upscale_size
 int main(int argc, char* argv[]){
 
     //Array of booleans of availability of workers
@@ -56,7 +72,7 @@ int main(int argc, char* argv[]){
     //Vector of clients
     std::vector<kn::tcp_socket> clients;
 
-    for(int i = 0; i < 4; i++){
+    for(int i = 0; i < workers.size(); i++){
         workers.at(i).connect();
     }
 
@@ -71,7 +87,17 @@ int main(int argc, char* argv[]){
     //TODO: Split up into chunks and push onto vector
     int w;
     int h;
-    int op = 1;
+    int op = std::stoi(argv[3]);
+    int blur_size = 0;
+    int upscale_size = 0;
+    int sum = 0;
+
+    if(op == 2){
+        blur_size = std::stoi(argv[6]);
+    }else if(op == 3){
+        upscale_size = std::stoi(argv[6]);
+    }
+
     unsigned char * data = stbi_load(argv[1], &w, &h, &n, 1);
     n = 1;  // so that stbi_write_png works for greyscale
 
@@ -85,6 +111,7 @@ int main(int argc, char* argv[]){
             for(int y = 0; y < chunk_height; y++){      // looping through each row of a chunk 
                 
                 hotdogData[y * w + x] = data[(y+chunk * chunk_height) * w + x];
+                sum += hotdogData[y * w + x];
 
             }
         }
@@ -93,13 +120,17 @@ int main(int argc, char* argv[]){
 
     }
 
-    bool finish = false;
+    unsigned char * lastChunk = chunks.at(chunks.size() - 1);
+
     while(chunks.size() != 0){
 
         //Send work to any available worker
         #pragma omp parallel for 
         for(int i = 0; i < assigned.size(); i++){
             if(assigned.at(i) == false && chunks.size() != 0){
+
+                std::cout << "chunks left " << chunks.size() << std::endl;
+
                 int chunk_id;
                 unsigned char *chunk;
 
@@ -111,23 +142,126 @@ int main(int argc, char* argv[]){
                     chunks.pop_back();
                     assigned.at(i) = true;
                 }
-                
-                //combine width, height, and op code in a string
+
                 std::string img_metadata = std::to_string(w) + "," + std::to_string(chunk_height) + "," + std::to_string(op) + "," + std::to_string(chunk_id) + ",";
-                size_t lenx = 44 - img_metadata.length() - 1;
-                for (int i = 0; i < lenx; i++) {
-                    img_metadata += "x";
+                
+                if(op == 1){
+
+                     //combine width, height, and op code in a string
+                    img_metadata += std::to_string(sum) + "," + std::to_string(w) + "," + std::to_string(h);
+                    metadata_padding(img_metadata);
+
+                    // std::cout << "Sending image metadata: " << img_metadata << std::endl;
+                    workers.at(i).send(reinterpret_cast<const std::byte *>(img_metadata.c_str()), sizeof(unsigned char) * (img_metadata.length() + 1));
+
+                     // send the data of the chunk 
+                    // std::cout << "send data\n";
+                    const auto [send_size, send_status] = workers.at(i).send(reinterpret_cast<const std::byte *>(chunk), w * chunk_height * sizeof(unsigned char));
+
+                }else if(op == 2){
+                    //combine width, height, and op code in a string
+                    img_metadata += std::to_string(blur_size) + "," + std::to_string(hotdogSections) + ",";
+                    metadata_padding(img_metadata);
+
+                    // std::cout << "Sending image metadata: " << img_metadata << std::endl;
+                    workers.at(i).send(reinterpret_cast<const std::byte *>(img_metadata.c_str()), sizeof(unsigned char) * (img_metadata.length() + 1));
+
+                     // send the data of the chunk 
+                    // std::cout << "send data\n";
+                    if(chunk_id == 0){
+
+                        unsigned char * paddedChunk = new unsigned char[(w * chunk_height) + (w * (blur_size / 2))];
+
+                        for(int x = 0; x < w; x++){     // looping through each column
+
+                            for(int y = 0; y < chunk_height + (blur_size / 2); y++){      // looping through each row of a chunk 
+                
+                                if(y < chunk_height){
+
+                                    paddedChunk[y * w + x] = chunk[y * w + x];
+
+                                }else{
+
+                                    paddedChunk[y * w + x] = lastChunk[(y - chunk_height) * w + x];
+                                }
+
+                            }
+                        }
+
+                        const auto [send_size, send_status] = workers.at(i).send(reinterpret_cast<const std::byte *>(paddedChunk), (w * chunk_height) + (w * (blur_size / 2)) * sizeof(unsigned char));
+                        std::cout << "sent: " << send_size << ", " << (w * chunk_height) + (w * (blur_size / 2)) <<  std::endl;
+
+                    }else if(chunk_id == hotdogSections - 1){
+
+                        unsigned char * paddedChunk = new unsigned char[(w * chunk_height) + (w * (blur_size / 2))];
+
+                        for(int x = 0; x < w; x++){     // looping through each column
+
+                            for(int y = 0; y < chunk_height + (blur_size / 2); y++){      // looping through each row of a chunk 
+                
+                                if(y < (blur_size / 2)){
+
+                                    paddedChunk[y * w + x] = chunks.back()[y * w + x];
+
+                                }else{
+
+                                    paddedChunk[y * w + x] = chunk[(y - (blur_size / 2)) * w + x];
+
+                                }
+
+                            }
+                        }
+                        
+                        const auto [send_size, send_status] = workers.at(i).send(reinterpret_cast<const std::byte *>(paddedChunk), (w * chunk_height) + (w * (blur_size / 2)) * sizeof(unsigned char));
+                        std::cout << "sent: " << send_size << ", " << (w * chunk_height) + (w * (blur_size / 2)) <<  std::endl;
+
+                    }else{
+
+                        unsigned char * paddedChunk = new unsigned char[(w * chunk_height) + 2 * (w * (blur_size / 2))];
+
+                        for(int x = 0; x < w; x++){     // looping through each column
+
+                            for(int y = 0; y < chunk_height + 2 * (blur_size / 2); y++){      // looping through each row of a chunk 
+                
+                                if(y < (blur_size / 2)){
+
+                                    paddedChunk[y * w + x] = chunks.back()[y * w + x];
+
+                                }else if(y < chunk_height + (blur_size / 2)){
+
+                                    paddedChunk[y * w + x] = chunk[(y - (blur_size / 2)) * w + x];
+
+                                }else{
+
+                                    paddedChunk[y * w + x] = lastChunk[(y - (chunk_height + (blur_size / 2))) * w + x];
+                                    lastChunk = chunk;
+
+                                }
+
+                            }
+                        }
+                        
+                        const auto [send_size, send_status] = workers.at(i).send(reinterpret_cast<const std::byte *>(paddedChunk), (w * chunk_height) + 2 *  (w * (blur_size / 2)) * sizeof(unsigned char));
+                        std::cout << "sent: " << send_size << ", " << (w * chunk_height) + (w * 2 * (blur_size / 2)) <<  std::endl;
+
+                    }
+
+                }else{
+                    //combine width, height, and op code in a string
+                    metadata_padding(img_metadata);
+
+                    // std::cout << "Sending image metadata: " << img_metadata << std::endl;
+                    workers.at(i).send(reinterpret_cast<const std::byte *>(img_metadata.c_str()), sizeof(unsigned char) * (img_metadata.length() + 1));
+
+                     // send the data of the chunk 
+                    // std::cout << "send data\n";
+                    const auto [send_size, send_status] = workers.at(i).send(reinterpret_cast<const std::byte *>(chunk), w * chunk_height * sizeof(unsigned char));
+                    std::cout << "sent: " << send_size << ", " << w*chunk_height <<  std::endl;
                 }
 
-                // std::cout << "Sending image metadata: " << img_metadata << std::endl;
-                workers.at(i).send(reinterpret_cast<const std::byte *>(img_metadata.c_str()), sizeof(unsigned char) * (img_metadata.length() + 1));
-
-                // send the data of the chunk 
-                // std::cout << "send data\n";
-                const auto [send_size, send_status] = workers.at(i).send(reinterpret_cast<const std::byte *>(chunk), w * chunk_height * sizeof(unsigned char));
-                std::cout << "sent: " << send_size << ", " << w*chunk_height <<  std::endl;
+               
                 #pragma omp task
-                    msg_recv(workers, i, assigned, chunk, chunks, finish);
+                    msg_recv(workers, i, assigned, chunk, chunks);
             }
         }
 

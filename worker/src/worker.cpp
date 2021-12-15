@@ -8,9 +8,15 @@
 #include "kissnet/kissnet.hpp"
 namespace kn = kissnet;
 
+#define METADATA_MAX_LENGTH 44
+#define IMG_DATA_BUFF_SIZE 4096
+
 unsigned char * upsample(unsigned char * img, int w, int h, int scale, int threads);
 unsigned char * blur(unsigned char * img, int w, int h, int blur_size, int threads);
-unsigned char * threshold(unsigned char * img, int w, int h, int threads);
+unsigned char * threshold(unsigned char * img, int w, int h, int sum, double outerConstant, int threads);
+
+static int starting_x = 0;
+static int starting_y = 0;
 
 //Arguments: port
 int main(int argc, char* argv[]) {
@@ -20,7 +26,10 @@ int main(int argc, char* argv[]) {
   int op = 0;
   int id = -1;
   int n = 1;
+  int blur_size;
   unsigned char * imageChunk;
+  int sum = 0;
+  double outerConstant = 0;
 
   std::string ip{"127.0.0.1:"};
   std::string end = ip + argv[1];
@@ -33,15 +42,15 @@ int main(int argc, char* argv[]) {
   printf("socket accept\n");
 
   bool detectedImage = false;
-  int lastIndex = 0;
+  size_t lastIndex = 0;
 
-  size_t total = 0;
+  // size_t total = 0;
   size_t len = 0;
 
   while (true) {
 
     if(width == 0 && height == 0 && op == 0 && id == -1){
-      kn::buffer<44> buff;
+      kn::buffer<METADATA_MAX_LENGTH> buff;
       const auto [size, status] = client.recv(buff);
 
       if(size != 0){
@@ -75,9 +84,53 @@ int main(int argc, char* argv[]) {
         std::cout << "Here is the op: " << op << std::endl;
         std::cout << "Here is the id: " << id << std::endl;
 
-        imageChunk = new unsigned char[width * height];
-        len = width * height * sizeof(unsigned char);
-        buff.empty();
+        if(op == 1){
+           img_metadata.erase(0, img_metadata.find(delim) + delim.length());
+           std::string sumS = img_metadata.substr(0, img_metadata.length());
+           img_metadata.erase(0, img_metadata.find(delim) + delim.length());
+           std::string totalWS = img_metadata.substr(0, img_metadata.length());
+           img_metadata.erase(0, img_metadata.find(delim) + delim.length());
+           std::string totalHS = img_metadata.substr(0, img_metadata.length());
+           int totalW = std::stoi(totalWS);
+           int totalH = std::stoi(totalHS);
+           sum = std::stoi(sumS);
+           outerConstant = 1.0 / (totalH * totalW);
+
+           std::cout << "Sum: " << sum << std::endl;
+           std::cout << "Outer Const: " << outerConstant << std::endl;
+
+           imageChunk = new unsigned char[width * height];
+           len = width * height * sizeof(unsigned char);
+           buff.empty();
+        }else if(op == 2){
+           img_metadata.erase(0, img_metadata.find(delim) + delim.length());
+           std::string blurSizeS = img_metadata.substr(0, img_metadata.length());
+           img_metadata.erase(0, img_metadata.find(delim) + delim.length());
+           std::string totalSections = img_metadata.substr(0, img_metadata.length());
+           blur_size = std::stoi(blurSizeS);
+           int lastID = std::stoi(totalSections) - 1;
+
+           if(id == 0 || id == lastID){
+              imageChunk = new unsigned char[(width * height) + (width * (blur_size / 2))];
+              len = (width * height) + (width * (blur_size / 2)) * sizeof(unsigned char);
+              buff.empty();
+
+              if(id == lastID){
+                starting_y = (blur_size / 2); 
+              }
+           }else{
+              imageChunk = new unsigned char[(width * height) + 2 * (width * (blur_size / 2))];
+              len = (width * height) + 2 * (width * (blur_size / 2)) * sizeof(unsigned char);
+              buff.empty();
+
+              starting_y = (blur_size / 2); 
+           }
+
+        }else{
+           imageChunk = new unsigned char[width * height];
+           len = width * height * sizeof(unsigned char);
+           buff.empty();
+        }
       } else {
         // Maybe add a timeout
         // std::cout << "Waiting for master... " << std::endl;
@@ -89,7 +142,7 @@ int main(int argc, char* argv[]) {
           filepath += std::to_string(id);
 
         //Do the work here
-        if(op == 1){
+        if(op == 3){
           filepath += "-upscaled.png";
           unsigned char * out_img = upsample(imageChunk, width, height, 4, 8);
           stbi_write_png(filepath.c_str(), width * 4, height * 4, n, out_img, (width * 4) * n);
@@ -97,9 +150,9 @@ int main(int argc, char* argv[]) {
           filepath += "-blurred.png";
           unsigned char * out_img = blur(imageChunk, width, height, 20, 8);
           stbi_write_png(filepath.c_str(), width, height, n, out_img, width * n);
-        }else if(op == 3){
+        }else if(op == 1){
           filepath += "-thresh.png";
-          unsigned char * out_img = threshold(imageChunk, width, height, 8);
+          unsigned char * out_img = threshold(imageChunk, width, height, sum, outerConstant, 8);
           stbi_write_png(filepath.c_str(), width, height, n, out_img, width * n);
         }
 
@@ -116,12 +169,12 @@ int main(int argc, char* argv[]) {
         op = 0;
         len = 0;
         id = -1;
-        total = 0;
+        // total = 0;
         lastIndex = 0;
         free(imageChunk);
 
     }else{  // Receiving image data
-      kn::buffer<2048> buff;
+      kn::buffer<IMG_DATA_BUFF_SIZE> buff;
       // printf("total vs len %u vs %u\n", total, len);
       // printf("receiving from client\n");
       const auto [size, status] = client.recv(buff);      
@@ -134,11 +187,12 @@ int main(int argc, char* argv[]) {
           imageChunk[i + lastIndex] = buff_data[i];
         }
 
+        std::cout << "last write at: " << lastIndex << std::endl;
         lastIndex += size;
-        total += size;
+        // total += size;
 
-        printf("total vs len %u vs %u\n", total, len);
-        if (total == len) {
+        printf("total vs len %u vs %u\n", lastIndex, len);
+        if (lastIndex == len) {
           detectedImage = true;
         }
         
@@ -160,8 +214,8 @@ unsigned char * upsample(unsigned char * img, int w, int h, int scale, int threa
   omp_set_num_threads(threads);
 
   #pragma omp parallel for
-  for(int x = 0; x < w; x++){ //This set of nested loops is used to iterate over each pixel and fetch its value
-    for(int y = 0; y < h; y++){
+  for(int x = starting_x; x < w; x++){ //This set of nested loops is used to iterate over each pixel and fetch its value
+    for(int y = starting_y; y < h; y++){
 
       int pixelValue = img[y * w + x];
 
@@ -188,8 +242,8 @@ unsigned char * blur(unsigned char * img, int w, int h, int blur_size, int threa
   unsigned char * out_img = new unsigned char[w * h];
 
   #pragma omp parallel for
-  for(int x = 0; x < w; x++){
-    for(int y = 0; y < h; y++){
+  for(int x = starting_x; x < w; x++){
+    for(int y = starting_y; y < h; y++){
 
       if(blur_size >= 1){
 
@@ -237,32 +291,20 @@ unsigned char * blur(unsigned char * img, int w, int h, int blur_size, int threa
   return out_img;
 }
 
-unsigned char * threshold(unsigned char * img, int w, int h, int threads){
+unsigned char * threshold(unsigned char * img, int w, int h, int sum, double outerConstant, int threads){
              
   unsigned char * out_img = new unsigned char[w * h]; // Creates an output image (img.w x img.h)
 
-  // TODO: find the threshold (average of the image using OpenMP)
-  double outerConstant = 1.0 / (w * h);
-  int sum = 0;
-
   omp_set_num_threads(threads);
 
-  #pragma omp parallel for reduction(+:sum)
-  for(int x = 0; x < w; x++){
-      for(int y = 0; y < h; y++){
-        sum += img[y * w + x];
-      }
-  }
-
-  //TODO: Send sum back to server
-  //TODO: Receive aggregate sum from server
+  std::cout << "outer: " << outerConstant << std::endl;
 
   int threshold = (int) std::round(outerConstant * sum);
 
   // TODO: threshold the image (using OpenMP)
   #pragma omp parallel for
-  for(int x = 0; x < w; x++){
-    for(int y = 0; y < h; y++){
+  for(int x = starting_x; x < w; x++){
+    for(int y = starting_y; y < h; y++){
       int currentValue = img[y * w + x];
 
       if(currentValue < threshold){
