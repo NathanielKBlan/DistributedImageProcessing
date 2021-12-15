@@ -33,33 +33,6 @@ void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &as
         {
             assigned.at(i) = false;
         }
-
-    if (size < buff.size()) {
-        buff[size] = std::byte{'\0'};
-    }
-
-  // Print the raw data as text into the terminal (should display html/css code
-  // here)
-    char *msg = reinterpret_cast<char *>(buff.data());
-    std::cout << msg << '\n';
-
-
-    // if (strncmp(msg, "Done", 4) == 0) {
-    //     #pragma omp critical
-    //     {
-    //         assigned.at(i) = false;
-    //         // if (chunks.size() == 0) {
-    //         //     finish = true;
-    //         // }
-    //     }
-    // } 
-    // else if (strncmp(msg, "resend", 6) == 0) {
-    //     #pragma omp critical
-    //     {
-    //         assigned.at(i) = false;
-    //         chunks.push_back(chunk);
-    //     }
-    // }
     
 }
 
