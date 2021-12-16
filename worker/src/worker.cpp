@@ -138,31 +138,44 @@ int main(int argc, char* argv[]) {
 
     }else if(detectedImage){
         printf("image detected\n");
-          std::string filepath = "../data/chunk-";
-          filepath += std::to_string(id);
+        std::string filepath = "../data/chunk-";
+        filepath += std::to_string(id);
+
+        unsigned char *processed_img;
 
         //Do the work here
         if(op == 3){
           filepath += "-upscaled.png";
-          unsigned char * out_img = upsample(imageChunk, width, height, 4, 8);
-          stbi_write_png(filepath.c_str(), width * 4, height * 4, n, out_img, (width * 4) * n);
+          processed_img = upsample(imageChunk, width, height, 4, 8);
+          stbi_write_png(filepath.c_str(), width * 4, height * 4, n, processed_img, (width * 4) * n);
+          width *= 4;
+          height *= 4;
         }else if(op == 2){
           filepath += "-blurred.png";
-          unsigned char * out_img = blur(imageChunk, width, height, 20, 8);
-          stbi_write_png(filepath.c_str(), width, height, n, out_img, width * n);
+          processed_img = blur(imageChunk, width, height, 20, 8);
+          stbi_write_png(filepath.c_str(), width, height, n, processed_img, width * n);
         }else if(op == 1){
           filepath += "-thresh.png";
-          unsigned char * out_img = threshold(imageChunk, width, height, sum, outerConstant, 8);
-          stbi_write_png(filepath.c_str(), width, height, n, out_img, width * n);
+          processed_img = threshold(imageChunk, width, height, sum, outerConstant, 8);
+          stbi_write_png(filepath.c_str(), width, height, n, processed_img, width * n);
         }
 
         detectedImage = false;
 
         //send available message here to master
-        auto done_msg = std::string{"Done"};
+        // auto done_msg = std::string{"Done"};
 
-        printf("Finishes. Send 'done' to client\n");
-        client.send(reinterpret_cast<const std::byte *>(done_msg.c_str()), done_msg.size());
+        std::string img_metadata = std::to_string(width) + "," + std::to_string(height) + "," + std::to_string(op) + "," + std::to_string(id) + ",";
+        size_t lenx = METADATA_MAX_LENGTH - img_metadata.length() - 1;
+        for (int i = 0; i < lenx; i++) {
+          img_metadata += "x";
+        }
+
+        printf("Finishes. Send metadata to client\n");
+        client.send(reinterpret_cast<const std::byte *>(img_metadata.c_str()), img_metadata.length() + 1);
+
+        printf("Finishes. Send processed img to client\n");
+        client.send(reinterpret_cast<const std::byte *>(processed_img), width * height * sizeof(unsigned char));
 
         width = 0;
         height = 0;

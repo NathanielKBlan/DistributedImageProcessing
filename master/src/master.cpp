@@ -19,29 +19,86 @@
 namespace kn = kissnet;
 
 #define METADATA_MAX_LENGTH 44
+#define IMG_DATA_BUFF_SIZE 4096
 
 void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &assigned, unsigned char *chunk, std::vector<unsigned char *> &chunks) {
     bool image_received = false;
     bool metadata_received = false;
 
-    // for checking if received full image (actual == calculated)
-    size_t actual_size = 0;
-    size_t calculated_size = 0;
-
-    kn::buffer<4> buff;
+    kn::buffer<METADATA_MAX_LENGTH> metadata_buff;
 
     // printf("waiting for worker %d\n", i);
-    auto [size, status] = workers.at(i).recv(buff);
+    auto [size, status] = workers.at(i).recv(metadata_buff);
 
     while (size <= 0) {
-        auto [nsize, nstatus] = workers.at(i).recv(buff);
+        auto [nsize, nstatus] = workers.at(i).recv(metadata_buff);
         size = nsize;
     }
 
-    #pragma omp critical
-        {
-            assigned.at(i) = false;
+    std::cout << "metadata received: " << size << std::endl;
+    const char * metadata_buff_data = reinterpret_cast<const char *>(metadata_buff.data());
+
+    std::string img_metadata(metadata_buff_data);
+
+    std::cout << "metadata string length: " << img_metadata.length() << std::endl;
+
+    std::cout << img_metadata << std::endl;
+
+    //split string and assign values
+    std::string delim = ",";
+    std::string widthS = img_metadata.substr(0, img_metadata.find(delim));
+    img_metadata.erase(0, img_metadata.find(delim) + delim.length());
+    std::string heightS = img_metadata.substr(0, img_metadata.find(delim));
+    img_metadata.erase(0, img_metadata.find(delim) + delim.length());
+    std::string opS = img_metadata.substr(0, img_metadata.find(delim));
+    img_metadata.erase(0, img_metadata.find(delim) + delim.length());
+    std::string idS = img_metadata.substr(0, img_metadata.length());
+
+    //assign values
+    int width = std::stoi(widthS);
+    int height = std::stoi(heightS);
+    int op = std::stoi(opS);
+    int id = std::stoi(idS);
+
+    std::cout << "Here is the height: " << height << std::endl;
+    std::cout << "Here is the width: " << width << std::endl;
+    std::cout << "Here is the op: " << op << std::endl;
+    std::cout << "Here is the id: " << id << std::endl;
+
+    // for checking if received full image (actual == calculated)
+    size_t actual_size = 0;
+    size_t calculated_size = width * height * sizeof(unsigned char);
+    unsigned char *received_img = new unsigned char[width * height];
+
+    kn::buffer<IMG_DATA_BUFF_SIZE> img_buff;
+
+    while (actual_size < calculated_size) {
+        auto [nsize, nstatus] = workers.at(i).recv(img_buff);
+        std::cout << "size received: " << nsize << std::endl;
+        std::cout << "status: " << nstatus << std::endl;
+
+        auto buff_data = reinterpret_cast<unsigned char *>(img_buff.data());
+
+        for(int i = 0; i < nsize; i++){
+          received_img[i + actual_size] = buff_data[i];
         }
+
+        actual_size += nsize;
+
+        printf("total vs len %u vs %u\n", actual_size, calculated_size);
+    }
+
+    std::string filepath = "../data/received-chunk-";
+    filepath += std::to_string(id);
+    filepath += ".png";
+
+    stbi_write_png(filepath.c_str(), width, height, 1, received_img, width * 1);
+    free(received_img);
+
+    #pragma omp critical
+    {
+        assigned.at(i) = false;
+    }
     
 }
 
