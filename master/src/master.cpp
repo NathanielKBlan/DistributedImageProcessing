@@ -21,10 +21,7 @@ namespace kn = kissnet;
 #define METADATA_MAX_LENGTH 44
 #define IMG_DATA_BUFF_SIZE 4096
 
-void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &assigned, unsigned char *chunk, std::vector<unsigned char *> &chunks) {
-    bool image_received = false;
-    bool metadata_received = false;
-
+void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &assigned, unsigned char *chunk, std::vector<unsigned char *> &chunks, std::vector<unsigned char *> &processed) {
     kn::buffer<METADATA_MAX_LENGTH> metadata_buff;
 
     // printf("waiting for worker %d\n", i);
@@ -35,14 +32,14 @@ void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &as
         size = nsize;
     }
 
-    std::cout << "metadata received: " << size << std::endl;
+    // std::cout << "metadata received: " << size << std::endl;
     const char * metadata_buff_data = reinterpret_cast<const char *>(metadata_buff.data());
 
     std::string img_metadata(metadata_buff_data);
 
-    std::cout << "metadata string length: " << img_metadata.length() << std::endl;
+    // std::cout << "metadata string length: " << img_metadata.length() << std::endl;
 
-    std::cout << img_metadata << std::endl;
+    // std::cout << img_metadata << std::endl;
 
     //split string and assign values
     std::string delim = ",";
@@ -74,8 +71,8 @@ void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &as
 
     while (actual_size < calculated_size) {
         auto [nsize, nstatus] = workers.at(i).recv(img_buff);
-        std::cout << "size received: " << nsize << std::endl;
-        std::cout << "status: " << nstatus << std::endl;
+        // std::cout << "size received: " << nsize << std::endl;
+        // std::cout << "status: " << nstatus << std::endl;
 
         auto buff_data = reinterpret_cast<unsigned char *>(img_buff.data());
 
@@ -85,15 +82,17 @@ void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &as
 
         actual_size += nsize;
 
-        printf("total vs len %u vs %u\n", actual_size, calculated_size);
+        // printf("total vs len %u vs %u\n", actual_size, calculated_size);
     }
 
-    std::string filepath = "../data/received-chunk-";
-    filepath += std::to_string(id);
-    filepath += ".png";
+    processed.at(id) = received_img;
 
-    stbi_write_png(filepath.c_str(), width, height, 1, received_img, width * 1);
-    free(received_img);
+    // std::string filepath = "../data/received-chunk-";
+    // filepath += std::to_string(id);
+    // filepath += ".png";
+
+    // printf("writing image\n");
+    // stbi_write_png(filepath.c_str(), width, height, 1, processed.at(id), width * 1);
 
     #pragma omp critical
     {
@@ -115,9 +114,6 @@ int main(int argc, char* argv[]){
     //Array of booleans of availability of workers
     std::vector<bool> assigned = {false, false, false, false};
 
-    //Array of image results for chunks;
-    std::vector<Image> results;
-
     //Vector of sockets
     std::vector<kn::tcp_socket> workers; 
     workers.push_back(kn::endpoint("127.0.0.1:3000"));
@@ -136,6 +132,9 @@ int main(int argc, char* argv[]){
     //Constants go here up top
     int n = 1;
     const int hotdogSections = std::stoi(argv[4]);
+
+    // Array of processed images
+    std::vector<unsigned char *> processed(hotdogSections);
 
     //Array of loaded images (chopped up)
     //Pop chunk off as it's sent
@@ -314,20 +313,50 @@ int main(int argc, char* argv[]){
                     // std::cout << "send data\n";
                     const auto [send_size, send_status] = workers.at(i).send(reinterpret_cast<const std::byte *>(chunk), w * chunk_height * sizeof(unsigned char));
                     std::cout << "sent: " << send_size << ", " << w*chunk_height <<  std::endl;
+
                 }
 
                
                 #pragma omp task
-                    msg_recv(workers, i, assigned, chunk, chunks);
+                    msg_recv(workers, i, assigned, chunk, chunks, processed);
             }
         }
 
-    }   
-    
-    //Use threads to open connections and send stuff to workers + recieve results
-    //Handle specific function reqs like padding for blur and sum for threshold
-    //Use mutex for results
+    }  
 
+    int result_w = w;
+    int result_h = h;
+
+    if (op == 3) {
+        w *= upscale_size;
+        chunk_height *= upscale_size;
+        result_w *= upscale_size;
+        result_h *= upscale_size;
+    }
+    
+    size_t chunk_len = w * chunk_height;
+    unsigned char *result = new unsigned char[result_w * result_h];
+
+    for (int i = 0; i < processed.size(); i++) {
+        // std::string filepath = "../data/received-chunk-";
+        // filepath += std::to_string(i);
+        // filepath += ".png";
+
+        // if (op == 3) {
+        //     stbi_write_png(filepath.c_str(), w * upscale_size, chunk_height * upscale_size, 1, processed.at(i), w * upscale_size * 1);
+        // } else {
+        //     stbi_write_png(filepath.c_str(), w, chunk_height, 1, processed.at(i), w * 1);
+        // }
+
+        // free(processed.at(i));
+
+        for (int j = 0; j < chunk_len; j++) {
+            result[i * chunk_len + j] = processed.at(i)[j];
+        }
+    }
+
+    stbi_write_png("../data/result.png", result_w, result_h, 1, result, result_w * 1);
+    
     //Aggregate results into an output image
     
 }
