@@ -39,12 +39,9 @@ int main(int argc, char* argv[]) {
   server.listen();
 
   auto client = server.accept();
-  printf("socket accept\n");
 
   bool detectedImage = false;
   size_t lastIndex = 0;
-
-  // size_t total = 0;
   size_t len = 0;
 
   while (true) {
@@ -182,27 +179,21 @@ int main(int argc, char* argv[]) {
         op = 0;
         len = 0;
         id = -1;
-        // total = 0;
         lastIndex = 0;
         free(imageChunk);
 
     }else{  // Receiving image data
       kn::buffer<IMG_DATA_BUFF_SIZE> buff;
-      // printf("total vs len %u vs %u\n", total, len);
-      // printf("receiving from client\n");
       const auto [size, status] = client.recv(buff);      
       auto buff_data = reinterpret_cast<unsigned char *>(buff.data());
 
       if(size > 0){
         std::cout << "size received: " << size << std::endl;
-        std::cout << "status: " << status << std::endl;
         for(int i = 0; i < size; i++){
           imageChunk[i + lastIndex] = buff_data[i];
         }
 
-        std::cout << "last write at: " << lastIndex << std::endl;
         lastIndex += size;
-        // total += size;
 
         printf("total vs len %u vs %u\n", lastIndex, len);
         if (lastIndex == len) {

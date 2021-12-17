@@ -72,7 +72,6 @@ void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &as
     while (actual_size < calculated_size) {
         auto [nsize, nstatus] = workers.at(i).recv(img_buff);
         // std::cout << "size received: " << nsize << std::endl;
-        // std::cout << "status: " << nstatus << std::endl;
 
         auto buff_data = reinterpret_cast<unsigned char *>(img_buff.data());
 
@@ -82,17 +81,9 @@ void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &as
 
         actual_size += nsize;
 
-        // printf("total vs len %u vs %u\n", actual_size, calculated_size);
     }
 
     processed.at(id) = received_img;
-
-    // std::string filepath = "../data/received-chunk-";
-    // filepath += std::to_string(id);
-    // filepath += ".png";
-
-    // printf("writing image\n");
-    // stbi_write_png(filepath.c_str(), width, height, 1, processed.at(id), width * 1);
 
     #pragma omp critical
     {
@@ -148,6 +139,9 @@ int main(int argc, char* argv[]){
     int upscale_size = 0;
     int sum = 0;
 
+    int result_w;
+    int result_chunk_h;
+
     if(op == 2){
         blur_size = std::stoi(argv[6]);
     }else if(op == 3){
@@ -177,27 +171,31 @@ int main(int argc, char* argv[]){
     }
 
     unsigned char * lastChunk = chunks.at(chunks.size() - 1);
+    unsigned char * firstChunk = chunks.at(0);
 
     while(chunks.size() != 0){
 
         //Send work to any available worker
         #pragma omp parallel for 
         for(int i = 0; i < assigned.size(); i++){
-            if(assigned.at(i) == false && chunks.size() != 0){
+            #pragma omp critical
+            {
+                if(assigned.at(i) == false && chunks.size() > 0){
 
                 std::cout << "chunks left " << chunks.size() << std::endl;
 
                 int chunk_id;
                 unsigned char *chunk;
 
-                #pragma omp critical
-                {
+                // #pragma omp critical
+                // {
+
                     chunk_id = chunks.size() - 1;
                     printf("thread id %d chunk id %d\n", omp_get_thread_num(), chunk_id);
                     chunk = chunks.back();
                     chunks.pop_back();
                     assigned.at(i) = true;
-                }
+                // }
 
                 std::string img_metadata = std::to_string(w) + "," + std::to_string(chunk_height) + "," + std::to_string(op) + "," + std::to_string(chunk_id) + ",";
                 
@@ -298,7 +296,7 @@ int main(int argc, char* argv[]){
                         }
                         
                         const auto [send_size, send_status] = workers.at(i).send(reinterpret_cast<const std::byte *>(paddedChunk), (w * chunk_height) + 2 *  (w * (blur_size / 2)) * sizeof(unsigned char));
-                        std::cout << "sent: " << send_size << ", " << (w * chunk_height) + (w * 2 * (blur_size / 2)) <<  std::endl;
+                        // std::cout << "sent: " << send_size << ", " << (w * chunk_height) + (w * 2 * (blur_size / 2)) <<  std::endl;
 
                     }
 
@@ -312,51 +310,31 @@ int main(int argc, char* argv[]){
                      // send the data of the chunk 
                     // std::cout << "send data\n";
                     const auto [send_size, send_status] = workers.at(i).send(reinterpret_cast<const std::byte *>(chunk), w * chunk_height * sizeof(unsigned char));
-                    std::cout << "sent: " << send_size << ", " << w*chunk_height <<  std::endl;
+                    // std::cout << "sent: " << send_size << ", " << w*chunk_height <<  std::endl;
 
                 }
 
                
                 #pragma omp task
                     msg_recv(workers, i, assigned, chunk, chunks, processed);
+                }
             }
+            
         }
 
     }  
-
-    int result_w = w;
-    int result_h = h;
-
-    if (op == 3) {
-        w *= upscale_size;
-        chunk_height *= upscale_size;
-        result_w *= upscale_size;
-        result_h *= upscale_size;
-    }
     
     size_t chunk_len = w * chunk_height;
-    unsigned char *result = new unsigned char[result_w * result_h];
+    int result_h = chunk_height * hotdogSections;
+    unsigned char *result = new unsigned char[w * result_h];
 
     for (int i = 0; i < processed.size(); i++) {
-        // std::string filepath = "../data/received-chunk-";
-        // filepath += std::to_string(i);
-        // filepath += ".png";
-
-        // if (op == 3) {
-        //     stbi_write_png(filepath.c_str(), w * upscale_size, chunk_height * upscale_size, 1, processed.at(i), w * upscale_size * 1);
-        // } else {
-        //     stbi_write_png(filepath.c_str(), w, chunk_height, 1, processed.at(i), w * 1);
-        // }
-
-        // free(processed.at(i));
 
         for (int j = 0; j < chunk_len; j++) {
             result[i * chunk_len + j] = processed.at(i)[j];
         }
     }
 
-    stbi_write_png("../data/result.png", result_w, result_h, 1, result, result_w * 1);
-    
-    //Aggregate results into an output image
-    
+    stbi_write_png(argv[2], w, result_h, 1, result, w * 1);
+        
 }
