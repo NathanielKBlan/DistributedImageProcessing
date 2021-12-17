@@ -43,7 +43,7 @@ Now open up four terminals in the /worker/build directory and run a worker insta
 ./worker [port number]
 ``` 
 
-Finally you can startup the master as so
+Finally you can startup the master as so. It's important that you start the workers before the master, if the master can't find the workers it will exit.
 ```
 ./master ../data/[input image file name] ../data/[output image file name] [1 (for thresholding), 2 (for bluring), 3 (for upscaling)] [blur_size/upscale amount]
 ```
