@@ -45,6 +45,6 @@ Now open up four terminals in the /worker/build directory and run a worker insta
 
 Finally you can startup the master as so. It's important that you start the workers before the master, if the master can't find the workers it will exit.
 ```
-./master ../data/[input image file name] ../data/[output image file name] [1 (for thresholding), 2 (for bluring), 3 (for upscaling)] [blur_size/upscale amount]
+./master ../data/[input image file name] ../data/[output image file name] [1 (for thresholding), 2 (for bluring), 3 (for upscaling)] chunks threads [blur_size/upscale amount]
 ```
 Note: worker and master must be terminated using ^C if you want to use them again
