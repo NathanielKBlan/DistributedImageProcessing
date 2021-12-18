@@ -15,6 +15,7 @@ git clone https://github.com/NathanielKBlan/DistributedImageProcessing.git
 cd DistributedImageProcessing
 ```
 Inside the DistributedImageProcessing directory should be two more directories /master and /worker
+
 For each you will need to create a build and data folder
 
 ```
@@ -31,6 +32,7 @@ cd build
 ```
 
 Inside each build directory run CMake to generate a Makefile for the project.
+
 Inside the data folder you can add the image you want processed, and is also where your output image will go
 
 ```
