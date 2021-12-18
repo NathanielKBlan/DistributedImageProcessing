@@ -8,7 +8,7 @@
 #include "kissnet/kissnet.hpp"
 namespace kn = kissnet;
 
-#define METADATA_MAX_LENGTH 44
+#define METADATA_MAX_LENGTH 55
 #define IMG_DATA_BUFF_SIZE 4096
 
 unsigned char * upsample(unsigned char * img, int w, int h, int scale, int threads);
@@ -26,7 +26,9 @@ int main(int argc, char* argv[]) {
   int op = 0;
   int id = -1;
   int n = 1;
+  int threads = 0;
   int blur_size;
+  int upscale;
   unsigned char * imageChunk;
   int sum = 0;
   double outerConstant = 0;
@@ -46,7 +48,7 @@ int main(int argc, char* argv[]) {
 
   while (true) {
 
-    if(width == 0 && height == 0 && op == 0 && id == -1){
+    if(width == 0 && height == 0 && op == 0 && id == -1 && threads == 0){
       kn::buffer<METADATA_MAX_LENGTH> buff;
       const auto [size, status] = client.recv(buff);
 
@@ -69,17 +71,21 @@ int main(int argc, char* argv[]) {
         std::string opS = img_metadata.substr(0, img_metadata.find(delim));
         img_metadata.erase(0, img_metadata.find(delim) + delim.length());
         std::string idS = img_metadata.substr(0, img_metadata.length());
+        img_metadata.erase(0, img_metadata.find(delim) + delim.length());
+        std::string threadsS = img_metadata.substr(0, img_metadata.length());
 
         //assign values
         width = std::stoi(widthS);
         height = std::stoi(heightS);
         op = std::stoi(opS);
         id = std::stoi(idS);
+        threads = std::stoi(threadsS);
 
         std::cout << "Here is the height: " << height << std::endl;
         std::cout << "Here is the width: " << width << std::endl;
         std::cout << "Here is the op: " << op << std::endl;
         std::cout << "Here is the id: " << id << std::endl;
+        std::cout << "Here is the threads: " << threads << std::endl;
 
         if(op == 1){
            img_metadata.erase(0, img_metadata.find(delim) + delim.length());
@@ -124,9 +130,13 @@ int main(int argc, char* argv[]) {
            }
 
         }else{
-           imageChunk = new unsigned char[width * height];
-           len = width * height * sizeof(unsigned char);
-           buff.empty();
+          img_metadata.erase(0, img_metadata.find(delim) + delim.length());
+          std::string upscaleS = img_metadata.substr(0, img_metadata.length());
+          upscale = std::stoi(upscaleS);
+
+          imageChunk = new unsigned char[width * height];
+          len = width * height * sizeof(unsigned char);
+          buff.empty();
         }
       } else {
         // Maybe add a timeout
@@ -143,26 +153,24 @@ int main(int argc, char* argv[]) {
         //Do the work here
         if(op == 3){
           filepath += "-upscaled.png";
-          processed_img = upsample(imageChunk, width, height, 4, 8);
-          stbi_write_png(filepath.c_str(), width * 4, height * 4, n, processed_img, (width * 4) * n);
-          width *= 4;
-          height *= 4;
+          processed_img = upsample(imageChunk, width, height, upscale, threads);
+          stbi_write_png(filepath.c_str(), width * upscale, height * upscale, n, processed_img, (width * upscale) * n);
+          width *= upscale;
+          height *= upscale;
         }else if(op == 2){
           filepath += "-blurred.png";
-          processed_img = blur(imageChunk, width, height, 20, 8);
+          processed_img = blur(imageChunk, width, height, blur_size, threads);
           stbi_write_png(filepath.c_str(), width, height, n, processed_img, width * n);
         }else if(op == 1){
           filepath += "-thresh.png";
-          processed_img = threshold(imageChunk, width, height, sum, outerConstant, 8);
+          processed_img = threshold(imageChunk, width, height, sum, outerConstant, threads);
           stbi_write_png(filepath.c_str(), width, height, n, processed_img, width * n);
         }
 
         detectedImage = false;
 
         //send available message here to master
-        // auto done_msg = std::string{"Done"};
-
-        std::string img_metadata = std::to_string(width) + "," + std::to_string(height) + "," + std::to_string(op) + "," + std::to_string(id) + ",";
+        std::string img_metadata = std::to_string(width) + "," + std::to_string(height) + "," + std::to_string(op) + "," + std::to_string(id) + "," + std::to_string(threads) + ",";
         size_t lenx = METADATA_MAX_LENGTH - img_metadata.length() - 1;
         for (int i = 0; i < lenx; i++) {
           img_metadata += "x";
@@ -180,6 +188,7 @@ int main(int argc, char* argv[]) {
         len = 0;
         id = -1;
         lastIndex = 0;
+        threads = 0;
         free(imageChunk);
 
     }else{  // Receiving image data

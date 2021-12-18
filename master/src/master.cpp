@@ -18,7 +18,7 @@
 #include "kissnet/kissnet.hpp"
 namespace kn = kissnet;
 
-#define METADATA_MAX_LENGTH 44
+#define METADATA_MAX_LENGTH 55
 #define IMG_DATA_BUFF_SIZE 4096
 
 void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &assigned, unsigned char *chunk, std::vector<unsigned char *> &chunks, std::vector<unsigned char *> &processed) {
@@ -50,6 +50,8 @@ void msg_recv(std::vector<kn::tcp_socket> &workers, int i, std::vector<bool> &as
     std::string opS = img_metadata.substr(0, img_metadata.find(delim));
     img_metadata.erase(0, img_metadata.find(delim) + delim.length());
     std::string idS = img_metadata.substr(0, img_metadata.length());
+    img_metadata.erase(0, img_metadata.find(delim) + delim.length());
+    std::string threadsS = img_metadata.substr(0, img_metadata.length());
 
     //assign values
     int width = std::stoi(widthS);
@@ -139,8 +141,7 @@ int main(int argc, char* argv[]){
     int upscale_size = 0;
     int sum = 0;
 
-    int result_w;
-    int result_chunk_h;
+    int threads = std::stoi(argv[5]);
 
     if(op == 2){
         blur_size = std::stoi(argv[6]);
@@ -184,20 +185,13 @@ int main(int argc, char* argv[]){
 
                 std::cout << "chunks left " << chunks.size() << std::endl;
 
-                int chunk_id;
-                unsigned char *chunk;
+                int chunk_id = chunks.size() - 1;
+                printf("thread id %d chunk id %d\n", omp_get_thread_num(), chunk_id);
+                unsigned char *chunk = chunks.back();
+                chunks.pop_back();
+                assigned.at(i) = true;
 
-                // #pragma omp critical
-                // {
-
-                    chunk_id = chunks.size() - 1;
-                    printf("thread id %d chunk id %d\n", omp_get_thread_num(), chunk_id);
-                    chunk = chunks.back();
-                    chunks.pop_back();
-                    assigned.at(i) = true;
-                // }
-
-                std::string img_metadata = std::to_string(w) + "," + std::to_string(chunk_height) + "," + std::to_string(op) + "," + std::to_string(chunk_id) + ",";
+                std::string img_metadata = std::to_string(w) + "," + std::to_string(chunk_height) + "," + std::to_string(op) + "," + std::to_string(chunk_id) + "," + std::to_string(threads) + ",";
                 
                 if(op == 1){
 
@@ -302,6 +296,7 @@ int main(int argc, char* argv[]){
 
                 }else{
                     //combine width, height, and op code in a string
+                    img_metadata += std::to_string(upscale_size) + ",";
                     metadata_padding(img_metadata);
 
                     // std::cout << "Sending image metadata: " << img_metadata << std::endl;
@@ -336,5 +331,5 @@ int main(int argc, char* argv[]){
     }
 
     stbi_write_png(argv[2], w, result_h, 1, result, w * 1);
-        
+    return 0;
 }
