@@ -15,25 +15,40 @@ unsigned char *upsample(unsigned char *img, int w, int h, int scale, int threads
 unsigned char *blur(unsigned char *img, int w, int h, int blur_size, int threads);
 unsigned char *threshold(unsigned char *img, int w, int h, int sum, double outerConstant, int threads);
 
-static int starting_x = 0;
 static int starting_y = 0;
 
 //Arguments: port
 int main(int argc, char *argv[])
 {
 
+	//Metadata for image chunk
 	int width = 0;
 	int height = 0;
 	int op = 0;
 	int id = -1;
+	
+	//Default n value, never changes
 	int n = 1;
+	
+	//amount of threads to be used by OpenMP
 	int threads = 0;
+	
+	//blur box size, only gets a value if the op code is 2
 	int blur_size;
+	
+	//upscale amount, only gets a value if the op code is 3
 	int upscale;
+	
+	//pointer to store the chunk
 	unsigned char *imageChunk;
+	
+	//sum for threshold, only gets value other than 0 if op code is 1
 	int sum = 0;
+	
+	//outerConstant for threshold, only gets value other than 0 if op code is 1
 	double outerConstant = 0;
 
+	//Start connection to master node on designated port
 	std::string ip{"127.0.0.1:"};
 	std::string end = ip + argv[1];
 
@@ -41,32 +56,36 @@ int main(int argc, char *argv[])
 	server.bind();
 	server.listen();
 
+	//Accept incoming connection from master node
 	auto client = server.accept();
 
+	//flag for image fecthing
 	bool detectedImage = false;
+	
+	//to be used to fetch image and to verify that whole image has been fetched
 	size_t lastIndex = 0;
 	size_t len = 0;
 
 	while (true)
 	{
-
+		
+		//If meta data is at default that means we still have to fetch it
 		if (width == 0 && height == 0 && op == 0 && id == -1 && threads == 0)
 		{
+			//set the buffer for fetching metadata
 			kn::buffer<METADATA_MAX_LENGTH> buff;
+			
+			//receive incoming data
 			const auto [size, status] = client.recv(buff);
 
+			//if data was received start parsing the metadata
 			if (size != 0)
 			{
-				// std::cout << "metadata received: " << size << std::endl;
 				const char *buff_data = reinterpret_cast<const char *>(buff.data());
 
 				std::string img_metadata(buff_data);
 
-				// std::cout << "metadata string length: " << img_metadata.length() << std::endl;
-
-				// std::cout << img_metadata << std::endl;
-
-				//split string and assign values
+				//parse the metadata
 				std::string delim = ",";
 				std::string widthS = img_metadata.substr(0, img_metadata.find(delim));
 				img_metadata.erase(0, img_metadata.find(delim) + delim.length());
@@ -78,21 +97,17 @@ int main(int argc, char *argv[])
 				img_metadata.erase(0, img_metadata.find(delim) + delim.length());
 				std::string threadsS = img_metadata.substr(0, img_metadata.length());
 
-				//assign values
+				//assign metadata values
 				width = std::stoi(widthS);
 				height = std::stoi(heightS);
 				op = std::stoi(opS);
 				id = std::stoi(idS);
 				threads = std::stoi(threadsS);
 
-				// std::cout << "Here is the height: " << height << std::endl;
-				// std::cout << "Here is the width: " << width << std::endl;
-				// std::cout << "Here is the op: " << op << std::endl;
-				// std::cout << "Here is the id: " << id << std::endl;
-				// std::cout << "Here is the threads: " << threads << std::endl;
-
+				//Here we fetch further metadata depending on the op code
 				if (op == 1)
 				{
+					//parse additional metadata needed for threshold
 					img_metadata.erase(0, img_metadata.find(delim) + delim.length());
 					std::string sumS = img_metadata.substr(0, img_metadata.length());
 					img_metadata.erase(0, img_metadata.find(delim) + delim.length());
@@ -104,15 +119,14 @@ int main(int argc, char *argv[])
 					sum = std::stoi(sumS);
 					outerConstant = 1.0 / (totalH * totalW);
 
-					// std::cout << "Sum: " << sum << std::endl;
-					// std::cout << "Outer Const: " << outerConstant << std::endl;
-
+					//allocate memory for image chunk and set the len variable
 					imageChunk = new unsigned char[width * height];
 					len = width * height * sizeof(unsigned char);
 					buff.empty();
 				}
 				else if (op == 2)
 				{
+					//parse additional metadata needed for blur
 					img_metadata.erase(0, img_metadata.find(delim) + delim.length());
 					std::string blurSizeS = img_metadata.substr(0, img_metadata.length());
 					img_metadata.erase(0, img_metadata.find(delim) + delim.length());
@@ -120,12 +134,15 @@ int main(int argc, char *argv[])
 					blur_size = std::stoi(blurSizeS);
 					int lastID = std::stoi(totalSections) - 1;
 
+					//To handle edge cases must allocate memory for the padding
 					if (id == 0 || id == lastID)
 					{
+						//allocate memory for the top or bottom padding and set len
 						imageChunk = new unsigned char[(width * height) + (width * (blur_size / 2))];
 						len = (width * height) + (width * (blur_size / 2)) * sizeof(unsigned char);
 						buff.empty();
-
+						
+						//if we are working on the last chunk of the image set the starting_y to the start of the padding
 						if (id == lastID)
 						{
 							starting_y = (blur_size / 2);
@@ -133,60 +150,55 @@ int main(int argc, char *argv[])
 					}
 					else
 					{
+						//allocate memory for the top and bottom padding and set len
 						imageChunk = new unsigned char[(width * height) + 2 * (width * (blur_size / 2))];
 						len = (width * height) + 2 * (width * (blur_size / 2)) * sizeof(unsigned char);
 						buff.empty();
 
+						//set the starting_y to the start of the top padding
 						starting_y = (blur_size / 2);
 					}
 				}
 				else
 				{
+					//parse additional metadata needed for upscale
 					img_metadata.erase(0, img_metadata.find(delim) + delim.length());
 					std::string upscaleS = img_metadata.substr(0, img_metadata.length());
 					upscale = std::stoi(upscaleS);
 
+					//allocate memory for image chunk and set the len variable
 					imageChunk = new unsigned char[width * height];
 					len = width * height * sizeof(unsigned char);
 					buff.empty();
 				}
 			}
-			else
-			{
-				// Maybe add a timeout
-				// std::cout << "Waiting for master... " << std::endl;
-			}
 		}
+		
+		//once image has been fully fetched process the image
 		else if (detectedImage)
 		{
-			// printf("image detected\n");
-			// std::string filepath = "../data/chunk-";
-			// filepath += std::to_string(id);
-
+			//to store processed image
 			unsigned char *processed_img;
 
-			//Do the work here
+			//upsample
 			if (op == 3)
 			{
-				// filepath += "-upscaled.png";
 				processed_img = upsample(imageChunk, width, height, upscale, threads);
-				// stbi_write_png(filepath.c_str(), width * upscale, height * upscale, n, processed_img, (width * upscale) * n);
 				width *= upscale;
 				height *= upscale;
 			}
+			//blur
 			else if (op == 2)
 			{
-				// filepath += "-blurred.png";
 				processed_img = blur(imageChunk, width, height, blur_size, threads);
-				// stbi_write_png(filepath.c_str(), width, height, n, processed_img, width * n);
 			}
+			//threshold
 			else if (op == 1)
 			{
-				// filepath += "-thresh.png";
 				processed_img = threshold(imageChunk, width, height, sum, outerConstant, threads);
-				// stbi_write_png(filepath.c_str(), width, height, n, processed_img, width * n);
 			}
 
+			//set flag to false to signal processing is done
 			detectedImage = false;
 
 			//send available message here to master
@@ -197,10 +209,11 @@ int main(int argc, char *argv[])
 				img_metadata += "x";
 			}
 
+			//send the processed chunk back to the master
 			client.send(reinterpret_cast<const std::byte *>(img_metadata.c_str()), img_metadata.length() + 1);
-
 			client.send(reinterpret_cast<const std::byte *>(processed_img), width * height * sizeof(unsigned char));
 
+			//reset all variables back to their default
 			width = 0;
 			height = 0;
 			op = 0;
@@ -210,8 +223,10 @@ int main(int argc, char *argv[])
 			threads = 0;
 			free(imageChunk);
 		}
+		// Receiving image data
 		else
-		{ // Receiving image data
+		{ 
+			//set our buffer and start receiving the image data
 			kn::buffer<IMG_DATA_BUFF_SIZE> buff;
 			const auto [size, status] = client.recv(buff);
 			auto buff_data = reinterpret_cast<unsigned char *>(buff.data());
@@ -220,11 +235,14 @@ int main(int argc, char *argv[])
 			{
 				for (int i = 0; i < size; i++)
 				{
+					//imageChunk is written to from where it last left off
 					imageChunk[i + lastIndex] = buff_data[i];
 				}
 
+				//update last index to include the size that has been read from the buffer
 				lastIndex += size;
 
+				//if we read everything there is to read for the image set the detectedImage flag to true
 				if (lastIndex == len)
 				{
 					detectedImage = true;
@@ -243,21 +261,17 @@ unsigned char *upsample(unsigned char *img, int w, int h, int scale, int threads
 	omp_set_num_threads(threads);
 
 #pragma omp parallel for
-	for (int x = starting_x; x < w; x++)
-	{ //This set of nested loops is used to iterate over each pixel and fetch its value
+	for (int x = 0; x < w; x++)
+	{ 
 		for (int y = starting_y; y < h; y++)
 		{
 
 			int pixelValue = img[y * w + x];
 
-			//This set of nested loops takes care of filling up the scaled region w/ the same pixel value
 			for (int a = 0; a < scale; a++)
 			{
 				for (int b = 0; b < scale; b++)
 				{
-					//x = (x * scale) + a
-					//y = (y * scale) + b
-					//std::cout << x << " " << y << std::endl;
 					out_img[((y * scale) + b) * (w * scale) + ((x * scale) + a)] = pixelValue;
 				}
 			}
@@ -275,7 +289,7 @@ unsigned char *blur(unsigned char *img, int w, int h, int blur_size, int threads
 	unsigned char *out_img = new unsigned char[w * h];
 
 #pragma omp parallel for
-	for (int x = starting_x; x < w; x++)
+	for (int x = 0; x < w; x++)
 	{
 		for (int y = starting_y; y < h; y++)
 		{
@@ -290,8 +304,6 @@ unsigned char *blur(unsigned char *img, int w, int h, int blur_size, int threads
 					{
 						if (x - (blur_size / 2) + a >= 0 && x - (blur_size / 2) + a < w && y - (blur_size / 2) + b >= 0 && y - (blur_size / 2) + b < h)
 						{
-							//x = x - (blur_size / 2) + a
-							//y = y - (blur_size / 2) + b
 							values[a][b] = img[(y - (blur_size / 2) + b) * w + (x - (blur_size / 2) + a)];
 						}
 						else
@@ -330,11 +342,11 @@ unsigned char *threshold(unsigned char *img, int w, int h, int sum, double outer
 {
 	omp_set_num_threads(threads);
 
-	unsigned char *out_img = new unsigned char[w * h]; // Creates an output image (img.w x img.h)
+	unsigned char *out_img = new unsigned char[w * h];
 	int threshold = (int)std::round(outerConstant * sum);
 
 #pragma omp parallel for
-	for (int x = starting_x; x < w; x++)
+	for (int x = 0; x < w; x++)
 	{
 		for (int y = starting_y; y < h; y++)
 		{
