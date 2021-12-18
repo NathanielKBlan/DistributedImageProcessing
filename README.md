@@ -48,4 +48,5 @@ Finally you can startup the master as so. It's important that you start the work
 ./master ../data/[input image file name] ../data/[output image file name] [1 (for thresholding), 2 (for bluring), 3 (for upscaling)] chunks threads [blur_size/upscale amount]
 ```
 Note: worker and master must be terminated using ^C if you want to use them again
+
 Aslo Note: chunks should be a multiple of 4
