@@ -40,7 +40,7 @@ cmake ..
 make
 ```
 
-Now open up four terminals in the /worker/build directory and run a worker instance for the following ports 3000, 3001, 3002, 3003 (it's important that you use these 4 ports
+Now open up four terminals in the /worker/build directory and run a worker instance for the following ports 3000, 3001, 3002, 3003 (it's important that you use these 4 ports)
 ```
 ./worker [port number]
 ``` 
