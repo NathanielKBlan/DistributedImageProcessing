@@ -1,6 +1,0 @@
-/home/trnqungnh/fandm/cps376/final-project/DistributedImageProcessing/worker/build/CMakeFiles/rebuild_cache.dir
-/home/trnqungnh/fandm/cps376/final-project/DistributedImageProcessing/worker/build/CMakeFiles/edit_cache.dir
-/home/trnqungnh/fandm/cps376/final-project/DistributedImageProcessing/worker/build/CMakeFiles/worker.dir
-/home/trnqungnh/fandm/cps376/final-project/DistributedImageProcessing/worker/build/include/kissnet/CMakeFiles/rebuild_cache.dir
-/home/trnqungnh/fandm/cps376/final-project/DistributedImageProcessing/worker/build/include/kissnet/CMakeFiles/edit_cache.dir
-/home/trnqungnh/fandm/cps376/final-project/DistributedImageProcessing/worker/build/include/kissnet/CMakeFiles/minimal.dir
