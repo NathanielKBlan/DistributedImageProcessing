@@ -20,6 +20,11 @@ static int starting_y = 0;
 //Arguments: port
 int main(int argc, char *argv[])
 {
+	
+	if(argc != 2){
+    	    std::cerr << "Usage: " << argv[0] << " <port number>" << std::endl;
+    	    return -1;
+  	}
 
 	//Metadata for image chunk
 	int width = 0;
