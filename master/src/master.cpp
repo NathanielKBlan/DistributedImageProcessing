@@ -96,6 +96,22 @@ void metadata_padding(std::string &metadata)
 //Arguments order: image file name, image out file name, function name (blur 2, threshold 1, or upsample 3), chunks, threads, blur_size, upscale_size
 int main(int argc, char *argv[])
 {
+    
+    if(argc != 7){
+        std::cerr << "Usage: " << argv[0] << " <input image> <output image> <1 (threshold), 2 (blur), or 3 (upsample)> <threads> <blur size or upsample size>" << std::endl;
+        return -1;
+    }
+
+    //Constants go here up top
+    //these values never change
+    int n = 1;
+    //the amount of chunks we have
+    const int hotdogSections = std::stoi(argv[4]);
+
+    if(hotdogSections % 4 != 0){
+        std::cerr << "Chunk amount must be a multiple of 4!" << std::endl;
+        return -1;
+    }
 
     //Array of booleans of availability of workers
     std::vector<bool> assigned = {false, false, false, false};
@@ -112,12 +128,6 @@ int main(int argc, char *argv[])
     {
         workers.at(i).connect();
     }
-
-    //these values never change
-    int n = 1;
-    
-    //the amount of chunks we have
-    const int hotdogSections = std::stoi(argv[4]);
 
     // Array of processed images
     std::vector<unsigned char *> processed(hotdogSections);
